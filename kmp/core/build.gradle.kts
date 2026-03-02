@@ -70,7 +70,7 @@ mavenPublishing {
     publishToMavenCentral(com.vanniktech.maven.publish.SonatypeHost.CENTRAL_PORTAL)
     signAllPublications()
 
-    coordinates("dev.deviceai", "kmp-core", version.toString())
+    coordinates("dev.deviceai", "core", version.toString())
 
     pom {
         name.set("DeviceAI Runtime — Core")

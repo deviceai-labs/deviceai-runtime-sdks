@@ -335,7 +335,7 @@ mavenPublishing {
     publishToMavenCentral(com.vanniktech.maven.publish.SonatypeHost.CENTRAL_PORTAL)
     signAllPublications()
 
-    coordinates("dev.deviceai", "kmp-speech", version.toString())
+    coordinates("dev.deviceai", "speech", version.toString())
 
     pom {
         name.set("DeviceAI Runtime — Speech")
