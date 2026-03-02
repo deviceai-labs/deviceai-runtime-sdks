@@ -51,3 +51,6 @@ CustomImpl.md
 # Build cache
 .kotlin/
 .cxx/
+
+# Unregistered native submodule clones (use git submodule add if intentional)
+llama.cpp/
