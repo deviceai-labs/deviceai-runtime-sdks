@@ -1,4 +1,5 @@
 import com.android.build.api.dsl.LibraryExtension
+import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -14,6 +15,19 @@ val minIos = "17.0"
 
 kotlin {
     jvmToolchain(17)
+
+    // Extend default hierarchy template to add a shared jvmCommon source set.
+    // This keeps all default iOS source sets intact while avoiding copy-paste
+    // between androidMain and jvmMain.
+    @OptIn(ExperimentalKotlinGradlePluginApi::class)
+    applyDefaultHierarchyTemplate {
+        common {
+            group("jvmCommon") {
+                withAndroidTarget()
+                withJvm()
+            }
+        }
+    }
 
     androidTarget {
         publishLibraryVariants("release")

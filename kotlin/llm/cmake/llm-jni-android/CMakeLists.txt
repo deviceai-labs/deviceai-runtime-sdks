@@ -20,16 +20,16 @@ endif()
 
 find_library(log-lib log)
 
-add_library(llm_jni SHARED
+add_library(deviceai_llm_jni SHARED
     ${CMAKE_SOURCE_DIR}/../../src/commonMain/cpp/llm_jni.cpp
 )
 
-target_include_directories(llm_jni PRIVATE
+target_include_directories(deviceai_llm_jni PRIVATE
     ${CMAKE_SOURCE_DIR}/../../src/commonMain/cpp
     ${LLAMA_DIR}/include
     ${LLAMA_DIR}
 )
 
-target_link_libraries(llm_jni llama ${log-lib})
+target_link_libraries(deviceai_llm_jni llama ${log-lib})
 
-target_compile_options(llm_jni PRIVATE -fPIC -fvisibility=hidden -O3)
+target_compile_options(deviceai_llm_jni PRIVATE -fPIC -fvisibility=hidden -O3)

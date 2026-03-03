@@ -41,27 +41,27 @@ if(ANDROID)
     find_library(log-lib log)
 endif()
 
-add_library(llm_jni SHARED llm_jni.cpp)
+add_library(deviceai_llm_jni SHARED llm_jni.cpp)
 
-target_include_directories(llm_jni PRIVATE
+target_include_directories(deviceai_llm_jni PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${LLAMA_DIR}/include
     ${LLAMA_DIR}
 )
 
 if(LLAMA_FOUND)
-    target_link_libraries(llm_jni llama)
+    target_link_libraries(deviceai_llm_jni llama)
 endif()
 
 if(ANDROID)
-    target_link_libraries(llm_jni ${log-lib})
+    target_link_libraries(deviceai_llm_jni ${log-lib})
 endif()
 
 # ═══════════════════════════════════════════════════════════════
 #                      COMPILE FLAGS
 # ═══════════════════════════════════════════════════════════════
 
-target_compile_options(llm_jni PRIVATE
+target_compile_options(deviceai_llm_jni PRIVATE
     -fPIC
     -fvisibility=hidden
     -O3

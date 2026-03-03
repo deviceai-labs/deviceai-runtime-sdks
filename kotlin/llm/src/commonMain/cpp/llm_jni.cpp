@@ -47,60 +47,32 @@ static void cleanup() {
 
 // ═══════════════════════════════════════════════════════════════
 //              Chat-template prompt formatting
+// Accepts role/content arrays (no \x01 encoding protocol).
 // Uses the model's embedded Jinja template via llama_chat_apply_template,
 // which handles ChatML, Llama 3, Gemma, Mistral, etc. automatically.
-// Falls back to returning the raw prompt on error.
 // ═══════════════════════════════════════════════════════════════
 
-// Build a fully-formatted prompt from a conversation history string.
-//
-// The `prompt` parameter encodes the full conversation as segments separated
-// by the ASCII SOH byte (\x01).  Each segment is prefixed with a role tag:
-//   "u:<text>"  → user message
-//   "a:<text>"  → assistant message
-// Plain prompts with no \x01 delimiter are treated as a single user message
-// (backward compatible with single-turn callers).
-//
-// The systemPrompt is always prepended as the first "system" message.
-static std::string build_prompt(const std::string &prompt, const std::string &systemPrompt) {
-    if (!g_model) return prompt;
+static std::string build_prompt(jobjectArray jRoles, jobjectArray jContents, JNIEnv *env) {
+    if (!g_model) return "";
 
+    int count = env->GetArrayLength(jRoles);
     // Keep content strings alive while we hold pointers into them.
     std::vector<std::string>        storage;
     std::vector<llama_chat_message> msgs;
 
-    if (!systemPrompt.empty()) {
-        storage.push_back(systemPrompt);
-        msgs.push_back({"system", storage.back().c_str()});
+    for (int i = 0; i < count; i++) {
+        auto role    = jstring_to_std(env, (jstring)env->GetObjectArrayElement(jRoles,    i));
+        auto content = jstring_to_std(env, (jstring)env->GetObjectArrayElement(jContents, i));
+        storage.push_back(std::move(role));
+        storage.push_back(std::move(content));
+        msgs.push_back({ storage[storage.size()-2].c_str(), storage.back().c_str() });
     }
 
-    // Parse history-encoded prompt (segments separated by \x01).
-    size_t pos = 0;
-    while (pos <= prompt.size()) {
-        size_t end = prompt.find('\x01', pos);
-        if (end == std::string::npos) end = prompt.size();
-
-        std::string seg = prompt.substr(pos, end - pos);
-        pos = end + 1;
-
-        if (seg.size() >= 2 && seg[1] == ':') {
-            char role_ch  = seg[0];
-            std::string content = seg.substr(2);
-            storage.push_back(std::move(content));
-            if      (role_ch == 'u') msgs.push_back({"user",      storage.back().c_str()});
-            else if (role_ch == 'a') msgs.push_back({"assistant", storage.back().c_str()});
-        } else if (!seg.empty()) {
-            // Plain (non-encoded) prompt — single user turn.
-            storage.push_back(seg);
-            msgs.push_back({"user", storage.back().c_str()});
-        }
-    }
-
-    if (msgs.empty()) return prompt;
+    if (msgs.empty()) return "";
 
     const char *tmpl = llama_model_chat_template(g_model, nullptr);
     int32_t sz = llama_chat_apply_template(tmpl, msgs.data(), msgs.size(), true, nullptr, 0);
-    if (sz <= 0) return prompt;
+    if (sz <= 0) return "";
 
     std::string out(sz, '\0');
     llama_chat_apply_template(tmpl, msgs.data(), msgs.size(), true, out.data(), sz);
@@ -140,7 +112,6 @@ static std::string do_generate(
     if (!g_model || !g_ctx) return "";
 
     // Clear the KV cache so each call starts with a fresh context.
-    // Without this, stale tokens from the previous turn corrupt the output.
     llama_memory_clear(llama_get_memory(g_ctx), /*data=*/false);
     llama_perf_context_reset(g_ctx);
 
@@ -209,7 +180,7 @@ static std::string do_generate(
 extern "C" {
 
 JNIEXPORT jboolean JNICALL
-Java_dev_deviceai_llm_LlmBridge_nativeInitLlm(
+Java_dev_deviceai_llm_engine_LlmJniEngine_nativeInit(
     JNIEnv *env, jobject, jstring jModelPath,
     jint contextSize, jint maxThreads, jboolean useGpu
 ) {
@@ -244,51 +215,46 @@ Java_dev_deviceai_llm_LlmBridge_nativeInitLlm(
 }
 
 JNIEXPORT void JNICALL
-Java_dev_deviceai_llm_LlmBridge_nativeShutdown(JNIEnv *, jobject) {
+Java_dev_deviceai_llm_engine_LlmJniEngine_nativeShutdown(JNIEnv *, jobject) {
     cleanup();
 }
 
 JNIEXPORT jstring JNICALL
-Java_dev_deviceai_llm_LlmBridge_nativeGenerate(
+Java_dev_deviceai_llm_engine_LlmJniEngine_nativeGenerate(
     JNIEnv *env, jobject,
-    jstring jPrompt, jstring jSystemPrompt,
+    jobjectArray jRoles, jobjectArray jContents,
     jint maxTokens, jfloat temperature,
     jfloat topP, jint topK, jfloat repeatPenalty
 ) {
     g_cancel = false;
-    std::string prompt       = jstring_to_std(env, jPrompt);
-    std::string systemPrompt = jstring_to_std(env, jSystemPrompt);
-    std::string full         = build_prompt(prompt, systemPrompt);
+    std::string full = build_prompt(jRoles, jContents, env);
 
     std::string result = do_generate(
         full, maxTokens, temperature, topP, topK, repeatPenalty,
-        [](const std::string &) { return true; }  // collect all, no streaming
+        [](const std::string &) { return true; }
     );
 
     return env->NewStringUTF(result.c_str());
 }
 
 JNIEXPORT void JNICALL
-Java_dev_deviceai_llm_LlmBridge_nativeGenerateStream(
+Java_dev_deviceai_llm_engine_LlmJniEngine_nativeGenerateStream(
     JNIEnv *env, jobject,
-    jstring jPrompt, jstring jSystemPrompt,
+    jobjectArray jRoles, jobjectArray jContents,
     jint maxTokens, jfloat temperature,
     jfloat topP, jint topK, jfloat repeatPenalty,
     jobject jCallback
 ) {
     g_cancel = false;
-    std::string prompt       = jstring_to_std(env, jPrompt);
-    std::string systemPrompt = jstring_to_std(env, jSystemPrompt);
-    std::string full         = build_prompt(prompt, systemPrompt);
+    std::string full = build_prompt(jRoles, jContents, env);
 
-    // Resolve LlmStream callback methods
-    jclass cbClass   = env->GetObjectClass(jCallback);
-    jmethodID onToken    = env->GetMethodID(cbClass, "onToken",    "(Ljava/lang/String;)V");
-    jmethodID onComplete = env->GetMethodID(cbClass, "onComplete", "(Ldev/deviceai/llm/LlmResult;)V");
-    jmethodID onError    = env->GetMethodID(cbClass, "onError",    "(Ljava/lang/String;)V");
+    // Resolve LlmStreamInternal callback methods (onToken + onError only)
+    jclass cbClass      = env->GetObjectClass(jCallback);
+    jmethodID onToken   = env->GetMethodID(cbClass, "onToken", "(Ljava/lang/String;)V");
+    jmethodID onError   = env->GetMethodID(cbClass, "onError", "(Ljava/lang/String;)V");
 
-    if (!onToken || !onComplete || !onError) {
-        LOGE("Failed to find LlmStream methods");
+    if (!onToken || !onError) {
+        LOGE("Failed to find LlmStreamInternal methods");
         return;
     }
 
@@ -296,7 +262,7 @@ Java_dev_deviceai_llm_LlmBridge_nativeGenerateStream(
     JavaVM *jvm;
     env->GetJavaVM(&jvm);
 
-    std::string fullResult = do_generate(
+    do_generate(
         full, maxTokens, temperature, topP, topK, repeatPenalty,
         [&](const std::string &piece) -> bool {
             JNIEnv *e;
@@ -308,13 +274,12 @@ Java_dev_deviceai_llm_LlmBridge_nativeGenerateStream(
         }
     );
 
-    // onComplete is assembled by the Kotlin layer (LlmBridge.android.kt) after
-    // nativeGenerateStream returns — no extra JNI call needed here.
+    // Flow completes naturally when nativeGenerateStream returns — no onComplete JNI call needed.
     env->DeleteGlobalRef(globalCb);
 }
 
 JNIEXPORT void JNICALL
-Java_dev_deviceai_llm_LlmBridge_nativeCancelGeneration(JNIEnv *, jobject) {
+Java_dev_deviceai_llm_engine_LlmJniEngine_nativeCancel(JNIEnv *, jobject) {
     g_cancel = true;
 }
 

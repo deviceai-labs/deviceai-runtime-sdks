@@ -37,45 +37,27 @@ static llama_sampler *build_sampler(float temperature, float top_p, int top_k, f
     return chain;
 }
 
-// See llm_jni.cpp for the history-encoding protocol (\x01-delimited, u:/a: prefixes).
-static std::string build_full_prompt(const char *prompt, const char *system_prompt) {
-    std::string sp(system_prompt ? system_prompt : "");
-    std::string p(prompt  ? prompt  : "");
-    if (!g_model) return p;
+// ═══════════════════════════════════════════════════════════════
+//              Chat-template prompt formatting
+// Accepts role/content arrays. Uses the model's embedded Jinja template
+// via llama_chat_apply_template (ChatML, Llama 3, Gemma, Mistral, etc.).
+// ═══════════════════════════════════════════════════════════════
+
+static std::string build_full_prompt(const char **roles, const char **contents, int count) {
+    if (!g_model || count <= 0) return "";
 
     std::vector<std::string>        storage;
     std::vector<llama_chat_message> msgs;
 
-    if (!sp.empty()) {
-        storage.push_back(sp);
-        msgs.push_back({"system", storage.back().c_str()});
+    for (int i = 0; i < count; i++) {
+        storage.push_back(roles[i]    ? roles[i]    : "");
+        storage.push_back(contents[i] ? contents[i] : "");
+        msgs.push_back({ storage[storage.size()-2].c_str(), storage.back().c_str() });
     }
-
-    size_t pos = 0;
-    while (pos <= p.size()) {
-        size_t end = p.find('\x01', pos);
-        if (end == std::string::npos) end = p.size();
-
-        std::string seg = p.substr(pos, end - pos);
-        pos = end + 1;
-
-        if (seg.size() >= 2 && seg[1] == ':') {
-            char role_ch = seg[0];
-            std::string content = seg.substr(2);
-            storage.push_back(std::move(content));
-            if      (role_ch == 'u') msgs.push_back({"user",      storage.back().c_str()});
-            else if (role_ch == 'a') msgs.push_back({"assistant", storage.back().c_str()});
-        } else if (!seg.empty()) {
-            storage.push_back(seg);
-            msgs.push_back({"user", storage.back().c_str()});
-        }
-    }
-
-    if (msgs.empty()) return p;
 
     const char *tmpl = llama_model_chat_template(g_model, nullptr);
     int32_t sz = llama_chat_apply_template(tmpl, msgs.data(), msgs.size(), true, nullptr, 0);
-    if (sz <= 0) return p;
+    if (sz <= 0) return "";
 
     std::string out(sz, '\0');
     llama_chat_apply_template(tmpl, msgs.data(), msgs.size(), true, out.data(), sz);
@@ -182,12 +164,12 @@ void llm_shutdown(void) {
 }
 
 char *llm_generate(
-    const char *prompt, const char *system_prompt,
+    const char **roles, const char **contents, int count,
     int max_tokens, float temperature,
     float top_p, int top_k, float repeat_penalty
 ) {
     g_cancel = false;
-    std::string full = build_full_prompt(prompt, system_prompt);
+    std::string full = build_full_prompt(roles, contents, count);
     std::string result = do_generate(
         full, max_tokens, temperature, top_p, top_k, repeat_penalty,
         [](const std::string &) { return true; }
@@ -198,26 +180,24 @@ char *llm_generate(
 }
 
 void llm_generate_stream(
-    const char *prompt, const char *system_prompt,
+    const char **roles, const char **contents, int count,
     int max_tokens, float temperature,
     float top_p, int top_k, float repeat_penalty,
     llm_on_token on_token,
-    llm_on_complete on_complete,
     llm_on_error on_error,
     void *user
 ) {
     g_cancel = false;
-    std::string full = build_full_prompt(prompt, system_prompt);
+    std::string full = build_full_prompt(roles, contents, count);
 
-    std::string result = do_generate(
+    do_generate(
         full, max_tokens, temperature, top_p, top_k, repeat_penalty,
         [&](const std::string &piece) -> bool {
             if (on_token) on_token(piece.c_str(), user);
             return !g_cancel.load();
         }
     );
-
-    if (on_complete) on_complete(result.c_str(), (int)result.size(), user);
+    // Flow completes naturally when llm_generate_stream returns — no on_complete callback needed.
 }
 
 void llm_cancel(void) {

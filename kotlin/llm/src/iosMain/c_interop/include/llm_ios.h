@@ -33,10 +33,11 @@ void llm_shutdown(void);
 // ═══════════════════════════════════════════════════════════════
 
 /**
- * Generate a response for the given prompt (blocking).
+ * Generate a response for the given conversation (blocking).
  *
- * @param prompt Input text prompt
- * @param system_prompt System prompt (empty string for none)
+ * @param roles   Array of role strings ("system", "user", "assistant")
+ * @param contents Array of message content strings, parallel to roles
+ * @param count   Number of messages
  * @param max_tokens Maximum tokens to generate
  * @param temperature Sampling temperature
  * @param top_p Nucleus sampling threshold
@@ -45,8 +46,9 @@ void llm_shutdown(void);
  * @return Generated text (caller must free with llm_free_string)
  */
 char *llm_generate(
-    const char *prompt,
-    const char *system_prompt,
+    const char **roles,
+    const char **contents,
+    int count,
     int max_tokens,
     float temperature,
     float top_p,
@@ -54,36 +56,35 @@ char *llm_generate(
     float repeat_penalty
 );
 
-// Streaming callbacks
+// Streaming callbacks (no on_complete — flow completes when llm_generate_stream returns)
 typedef void (*llm_on_token)(const char *token, void *user);
-typedef void (*llm_on_complete)(const char *full_text, int token_count, void *user);
 typedef void (*llm_on_error)(const char *message, void *user);
 
 /**
  * Stream a response token-by-token.
  *
- * @param prompt Input text prompt
- * @param system_prompt System prompt (empty string for none)
+ * @param roles   Array of role strings ("system", "user", "assistant")
+ * @param contents Array of message content strings, parallel to roles
+ * @param count   Number of messages
  * @param max_tokens Maximum tokens to generate
  * @param temperature Sampling temperature
  * @param top_p Nucleus sampling threshold
  * @param top_k Top-K sampling limit
  * @param repeat_penalty Repetition penalty
  * @param on_token Callback for each generated token piece
- * @param on_complete Callback when generation finishes
  * @param on_error Callback for errors
  * @param user User data passed to all callbacks
  */
 void llm_generate_stream(
-    const char *prompt,
-    const char *system_prompt,
+    const char **roles,
+    const char **contents,
+    int count,
     int max_tokens,
     float temperature,
     float top_p,
     int top_k,
     float repeat_penalty,
     llm_on_token on_token,
-    llm_on_complete on_complete,
     llm_on_error on_error,
     void *user
 );

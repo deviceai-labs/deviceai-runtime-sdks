@@ -1,5 +1,7 @@
 package dev.deviceai.llm
 
+import kotlinx.coroutines.flow.Flow
+
 @Suppress("EXPECT_ACTUAL_CLASSIFIERS_ARE_IN_BETA_WARNING")
 expect object LlmBridge {
 
@@ -11,10 +13,10 @@ expect object LlmBridge {
      * Initialize the LLM engine with a GGUF model file.
      *
      * @param modelPath Absolute path to .gguf model file
-     * @param config Optional configuration parameters
+     * @param config Engine initialization parameters
      * @return true if initialization succeeded
      */
-    fun initLlm(modelPath: String, config: LlmConfig = LlmConfig()): Boolean
+    fun initLlm(modelPath: String, config: LlmInitConfig = LlmInitConfig()): Boolean
 
     /**
      * Release all LLM resources and unload the model.
@@ -26,22 +28,23 @@ expect object LlmBridge {
     // ══════════════════════════════════════════════════════════════
 
     /**
-     * Generate a response for the given prompt (blocking).
+     * Generate a response for the given conversation (blocking).
      *
-     * @param prompt Input text prompt
-     * @param config Optional per-request config overrides
-     * @return LlmResult with generated text and metadata
+     * @param messages Conversation history including the new user message
+     * @param config Per-request generation parameters
+     * @return [LlmResult] with generated text and metadata
      */
-    fun generate(prompt: String, config: LlmConfig = LlmConfig()): LlmResult
+    fun generate(messages: List<LlmMessage>, config: LlmGenConfig = LlmGenConfig()): LlmResult
 
     /**
      * Stream a response token-by-token.
+     * Each emission is one llama token piece.
      *
-     * @param prompt Input text prompt
-     * @param config Optional per-request config overrides
-     * @param callback Callbacks for tokens, completion, and errors
+     * @param messages Conversation history including the new user message
+     * @param config Per-request generation parameters
+     * @return [Flow] of token strings in generation order
      */
-    fun generateStream(prompt: String, config: LlmConfig = LlmConfig(), callback: LlmStream)
+    fun generateStream(messages: List<LlmMessage>, config: LlmGenConfig = LlmGenConfig()): Flow<String>
 
     /**
      * Cancel an in-progress generation.

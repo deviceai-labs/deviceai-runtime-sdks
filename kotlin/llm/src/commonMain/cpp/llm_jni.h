@@ -12,7 +12,7 @@ extern "C" {
 // ═══════════════════════════════════════════════════════════════
 
 JNIEXPORT jboolean JNICALL
-Java_dev_deviceai_llm_LlmBridge_nativeInitLlm(
+Java_dev_deviceai_llm_engine_LlmJniEngine_nativeInit(
     JNIEnv *env, jobject obj,
     jstring modelPath,
     jint contextSize,
@@ -21,7 +21,7 @@ Java_dev_deviceai_llm_LlmBridge_nativeInitLlm(
 );
 
 JNIEXPORT void JNICALL
-Java_dev_deviceai_llm_LlmBridge_nativeShutdown(
+Java_dev_deviceai_llm_engine_LlmJniEngine_nativeShutdown(
     JNIEnv *env, jobject obj
 );
 
@@ -30,10 +30,10 @@ Java_dev_deviceai_llm_LlmBridge_nativeShutdown(
 // ═══════════════════════════════════════════════════════════════
 
 JNIEXPORT jstring JNICALL
-Java_dev_deviceai_llm_LlmBridge_nativeGenerate(
+Java_dev_deviceai_llm_engine_LlmJniEngine_nativeGenerate(
     JNIEnv *env, jobject obj,
-    jstring prompt,
-    jstring systemPrompt,
+    jobjectArray roles,
+    jobjectArray contents,
     jint maxTokens,
     jfloat temperature,
     jfloat topP,
@@ -42,10 +42,10 @@ Java_dev_deviceai_llm_LlmBridge_nativeGenerate(
 );
 
 JNIEXPORT void JNICALL
-Java_dev_deviceai_llm_LlmBridge_nativeGenerateStream(
+Java_dev_deviceai_llm_engine_LlmJniEngine_nativeGenerateStream(
     JNIEnv *env, jobject obj,
-    jstring prompt,
-    jstring systemPrompt,
+    jobjectArray roles,
+    jobjectArray contents,
     jint maxTokens,
     jfloat temperature,
     jfloat topP,
@@ -55,7 +55,7 @@ Java_dev_deviceai_llm_LlmBridge_nativeGenerateStream(
 );
 
 JNIEXPORT void JNICALL
-Java_dev_deviceai_llm_LlmBridge_nativeCancelGeneration(
+Java_dev_deviceai_llm_engine_LlmJniEngine_nativeCancel(
     JNIEnv *env, jobject obj
 );
 
