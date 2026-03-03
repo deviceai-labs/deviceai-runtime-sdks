@@ -46,8 +46,11 @@ static llama_sampler *build_sampler(float temperature, float top_p, int top_k, f
 static std::string build_full_prompt(const char **roles, const char **contents, int count) {
     if (!g_model || count <= 0) return "";
 
+    // MUST reserve before the loop — any reallocation of storage invalidates all
+    // .c_str() pointers already stored in msgs entries (dangling pointer UB).
     std::vector<std::string>        storage;
     std::vector<llama_chat_message> msgs;
+    storage.reserve(count * 2);
 
     for (int i = 0; i < count; i++) {
         storage.push_back(roles[i]    ? roles[i]    : "");

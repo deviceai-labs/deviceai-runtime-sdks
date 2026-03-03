@@ -57,8 +57,11 @@ static std::string build_prompt(jobjectArray jRoles, jobjectArray jContents, JNI
 
     int count = env->GetArrayLength(jRoles);
     // Keep content strings alive while we hold pointers into them.
+    // MUST reserve before the loop — any reallocation of storage invalidates all
+    // .c_str() pointers already stored in msgs entries (dangling pointer UB).
     std::vector<std::string>        storage;
     std::vector<llama_chat_message> msgs;
+    storage.reserve(count * 2);
 
     for (int i = 0; i < count; i++) {
         auto role    = jstring_to_std(env, (jstring)env->GetObjectArrayElement(jRoles,    i));
