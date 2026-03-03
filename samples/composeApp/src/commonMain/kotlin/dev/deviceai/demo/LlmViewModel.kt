@@ -5,6 +5,9 @@ import dev.deviceai.llm.LlmResult
 import dev.deviceai.llm.LlmStream
 import dev.deviceai.llm.models.LlmCatalog
 import dev.deviceai.llm.models.LlmModelInfo
+import dev.deviceai.models.DownloadProgress
+import dev.deviceai.models.LocalModelType
+import dev.deviceai.models.ModelRegistry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -18,10 +21,11 @@ import kotlinx.coroutines.withContext
 // ── LLM loading state ─────────────────────────────────────────────────────────
 
 sealed class LlmState {
-    object NotAvailable : LlmState()  // native library not compiled yet
-    object Idle : LlmState()          // ready to load a model
-    object Loading : LlmState()       // LlmBridge.initLlm() in progress
-    object Ready : LlmState()         // model loaded, chat works
+    object NotAvailable : LlmState()                          // native library not compiled yet
+    object Idle : LlmState()                                  // ready to start download / load
+    data class Downloading(val progress: DownloadProgress) : LlmState()  // downloading model file
+    object Loading : LlmState()                               // LlmBridge.initLlm() in progress
+    object Ready : LlmState()                                 // model loaded, chat works
     data class Error(val msg: String) : LlmState()
 }
 
@@ -63,6 +67,40 @@ class LlmViewModel {
     private fun nextMessageId() = nextId++
 
     // ── Public API ────────────────────────────────────────────────────────────
+
+    /**
+     * Kick off model discovery → download (if needed) → load.
+     * Mirrors how SpeechViewModel.initialize() works for Whisper.
+     * Safe to call multiple times — no-ops unless in Idle state.
+     */
+    fun initialize() {
+        if (_state.value !is LlmState.Idle) return
+
+        scope.launch {
+            withContext(Dispatchers.IO) { ModelRegistry.initialize() }
+
+            // Already downloaded?
+            val existing = ModelRegistry.getLocalModel(suggestedModel.id)
+            if (existing != null) {
+                loadModel(existing.modelPath)
+                return@launch
+            }
+
+            // Download from HuggingFace
+            val url = "https://huggingface.co/${suggestedModel.repoId}/resolve/main/${suggestedModel.filename}"
+            val result = ModelRegistry.downloadRawFile(
+                modelId   = suggestedModel.id,
+                url       = url,
+                modelType = LocalModelType("LLM"),
+                onProgress = { _state.value = LlmState.Downloading(it) }
+            )
+
+            result.fold(
+                onSuccess = { local -> loadModel(local.modelPath) },
+                onFailure = { e   -> _state.value = LlmState.Error("Download failed: ${e.message}") }
+            )
+        }
+    }
 
     fun loadModel(path: String) {
         scope.launch {
@@ -148,5 +186,6 @@ class LlmViewModel {
 
     fun retry() {
         _state.value = LlmState.Idle
+        initialize()
     }
 }

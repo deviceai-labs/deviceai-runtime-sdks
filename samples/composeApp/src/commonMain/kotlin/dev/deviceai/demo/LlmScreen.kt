@@ -30,6 +30,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -47,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import dev.deviceai.llm.models.LlmModelInfo
+import dev.deviceai.models.DownloadProgress
 
 @Composable
 fun LlmTabContent(viewModel: LlmViewModel, padding: PaddingValues) {
@@ -54,17 +56,21 @@ fun LlmTabContent(viewModel: LlmViewModel, padding: PaddingValues) {
     val messages by viewModel.messages.collectAsState()
     val isGenerating by viewModel.isGenerating.collectAsState()
 
+    // Auto-start download/load as soon as the Chat tab becomes active.
+    LaunchedEffect(Unit) { viewModel.initialize() }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .padding(padding)
     ) {
-        when (state) {
-            is LlmState.NotAvailable -> NotAvailableContent(viewModel.suggestedModel)
-            is LlmState.Idle         -> IdleContent(viewModel.suggestedModel, onLoad = { viewModel.loadModel("") })
-            is LlmState.Loading      -> LoadingContent()
-            is LlmState.Ready        -> ChatContent(messages, isGenerating, viewModel)
-            is LlmState.Error        -> ErrorContent((state as LlmState.Error).msg, onRetry = viewModel::retry)
+        when (val s = state) {
+            is LlmState.NotAvailable  -> NotAvailableContent(viewModel.suggestedModel)
+            is LlmState.Idle          -> IdleContent(viewModel.suggestedModel, onDownload = viewModel::initialize)
+            is LlmState.Downloading   -> DownloadingContent(viewModel.suggestedModel, s.progress)
+            is LlmState.Loading       -> LoadingContent()
+            is LlmState.Ready         -> ChatContent(messages, isGenerating, viewModel)
+            is LlmState.Error         -> ErrorContent(s.msg, onRetry = viewModel::retry)
         }
     }
 }
@@ -128,9 +134,7 @@ private fun NotAvailableContent(model: LlmModelInfo) {
 // ── Idle ──────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun IdleContent(model: LlmModelInfo, onLoad: () -> Unit) {
-    var showInfo by remember { mutableStateOf(false) }
-
+private fun IdleContent(model: LlmModelInfo, onDownload: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -138,25 +142,88 @@ private fun IdleContent(model: LlmModelInfo, onLoad: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
+        Icon(
+            imageVector = Icons.Default.SmartToy,
+            contentDescription = null,
+            modifier = Modifier.size(64.dp),
+            tint = MaterialTheme.colorScheme.primary
+        )
+        Spacer(Modifier.height(16.dp))
+        Text(
+            text = "On-Device Chat",
+            style = MaterialTheme.typography.headlineSmall,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = "Fully offline · No API key needed",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(28.dp))
         ModelPreviewCard(model)
         Spacer(Modifier.height(24.dp))
         Button(
-            onClick = { showInfo = true },
-            modifier = Modifier.fillMaxWidth(0.65f)
+            onClick = onDownload,
+            modifier = Modifier
+                .fillMaxWidth(0.65f)
+                .height(52.dp)
         ) {
-            Text("Load Model")
+            Text("Download & Load", style = MaterialTheme.typography.titleMedium)
         }
-        AnimatedVisibility(visible = showInfo) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    text = "Model download registry coming soon.\nPlace a .gguf file in the app files directory.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center
-                )
-            }
-        }
+        Spacer(Modifier.height(12.dp))
+        Text(
+            text = "One-time download · runs fully on-device",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+// ── Downloading ───────────────────────────────────────────────────────────────
+
+@Composable
+private fun DownloadingContent(model: LlmModelInfo, progress: DownloadProgress) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            imageVector = Icons.Default.SmartToy,
+            contentDescription = null,
+            modifier = Modifier.size(64.dp),
+            tint = MaterialTheme.colorScheme.primary
+        )
+        Spacer(Modifier.height(16.dp))
+        Text(
+            text = "Downloading ${model.name}",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        Spacer(Modifier.height(20.dp))
+        LinearProgressIndicator(
+            progress = { (progress.percentComplete / 100f).coerceIn(0f, 1f) },
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.primary,
+            trackColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+        Spacer(Modifier.height(12.dp))
+        Text(
+            text = "${progress.percentComplete.toInt()}%  ·  ${formatMb(progress.bytesDownloaded)} / ${formatMb(model.sizeBytes)}",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = "One-time download · runs fully on-device",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -172,11 +239,19 @@ private fun LoadingContent() {
         CircularProgressIndicator()
         Spacer(Modifier.height(16.dp))
         Text(
-            text = "Initializing model...",
+            text = "Loading model...",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
+}
+
+private fun formatMb(bytes: Long): String {
+    if (bytes <= 0L) return "0 MB"
+    val mb = bytes / (1024.0 * 1024.0)
+    val whole = mb.toLong()
+    val decimal = ((mb - whole) * 10).toLong()
+    return "$whole.${decimal} MB"
 }
 
 // ── Error ─────────────────────────────────────────────────────────────────────

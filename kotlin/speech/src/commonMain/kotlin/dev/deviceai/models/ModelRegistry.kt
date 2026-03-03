@@ -145,6 +145,52 @@ object ModelRegistry {
     }
 
     /**
+     * Download a file from an arbitrary URL into the models directory.
+     *
+     * Intended for modules (e.g. runtime-llm) that have their own model catalogs
+     * but want to reuse the shared HTTP + metadata infrastructure.
+     *
+     * @param modelId  Unique identifier used to cache / look up the model
+     * @param url      Direct download URL (e.g. HuggingFace resolve URL)
+     * @param modelType  Type discriminator stored in metadata (e.g. LocalModelType("LLM"))
+     * @param onProgress Called with download progress updates
+     * @return [Result] containing the [LocalModel] on success
+     */
+    suspend fun downloadRawFile(
+        modelId: String,
+        url: String,
+        modelType: LocalModelType,
+        onProgress: (DownloadProgress) -> Unit = {}
+    ): Result<LocalModel> {
+        requireInitialized()
+
+        // Return cached model immediately if already downloaded.
+        val existing = store.getModel(modelId)
+        if (existing != null && PlatformStorage.fileExists(existing.modelPath)) {
+            onProgress(DownloadProgress.completed(PlatformStorage.fileSize(existing.modelPath)))
+            return Result.success(existing)
+        }
+
+        val filename = url.substringAfterLast('/')
+        val destDir  = "${PlatformStorage.getModelsDir()}/${modelType.id.lowercase()}"
+        val destPath = "$destDir/$filename"
+
+        return try {
+            HttpFileDownloader(client, config, PlatformStorage).download(url, destPath, onProgress)
+            val local = LocalModel(
+                modelId      = modelId,
+                modelType    = modelType,
+                modelPath    = destPath,
+                downloadedAt = currentTimeMillis()
+            )
+            store.addModel(local)
+            Result.success(local)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Cancel an in-progress download.
      */
     fun cancelDownload(modelId: String) {

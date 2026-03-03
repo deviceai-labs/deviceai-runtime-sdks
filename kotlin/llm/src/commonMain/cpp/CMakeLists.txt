@@ -21,6 +21,11 @@ set(LLAMA_BUILD_SERVER   OFF CACHE BOOL "" FORCE)
 set(GGML_METAL           OFF CACHE BOOL "" FORCE)  # No Metal on Android/JVM
 
 if(EXISTS ${LLAMA_DIR}/CMakeLists.txt)
+    # Force static libs so all ggml code is embedded in libllm_jni.so.
+    # This avoids dlopen failures when speech's libggml*.so (whisper.cpp build)
+    # is present but lacks llama.cpp-specific symbols like ggml_build_forward_select.
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+    set(GGML_SHARED        OFF CACHE BOOL "" FORCE)
     add_subdirectory(${LLAMA_DIR} llama-build EXCLUDE_FROM_ALL)
     set(LLAMA_FOUND TRUE)
 else()
