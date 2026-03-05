@@ -45,6 +45,12 @@ jobs:
       - name: Compile kotlin/speech (Android)
         run: ./gradlew :kotlin:speech:compileDebugKotlinAndroid --no-daemon
 
+      - name: Compile kotlin/llm (JVM)
+        run: ./gradlew :kotlin:llm:compileKotlinJvm --no-daemon
+
+      - name: Compile kotlin/llm (Android)
+        run: ./gradlew :kotlin:llm:compileDebugKotlinAndroid --no-daemon
+
       - name: Compile sample app (Android)
         run: ./gradlew :samples:composeApp:compileDebugKotlinAndroid --no-daemon
 
@@ -76,6 +82,9 @@ jobs:
 
       - name: Compile kotlin/speech (iOS Simulator arm64)
         run: ./gradlew :kotlin:speech:compileKotlinIosSimulatorArm64 --no-daemon
+
+      - name: Compile kotlin/llm (iOS Simulator arm64)
+        run: ./gradlew :kotlin:llm:compileKotlinIosSimulatorArm64 --no-daemon
 
       - name: Compile sample app (iOS Simulator arm64)
         run: ./gradlew :samples:composeApp:compileKotlinIosSimulatorArm64 --no-daemon
