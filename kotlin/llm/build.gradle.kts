@@ -255,7 +255,7 @@ mavenPublishing {
     publishToMavenCentral(com.vanniktech.maven.publish.SonatypeHost.CENTRAL_PORTAL)
     signAllPublications()
 
-    coordinates("dev.deviceai", "kmp-llm", version.toString())
+    coordinates("dev.deviceai", "llm", version.toString())
 
     pom {
         name.set("DeviceAI Runtime — LLM")

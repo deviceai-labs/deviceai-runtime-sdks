@@ -4,7 +4,7 @@
 
 [![Build](https://github.com/deviceai-labs/deviceai/actions/workflows/ci.yml/badge.svg)](https://github.com/deviceai-labs/deviceai/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
-[![Maven Central](https://img.shields.io/maven-central/v/dev.deviceai/kmp-speech)](https://central.sonatype.com/artifact/dev.deviceai/kmp-speech)
+[![Maven Central](https://img.shields.io/maven-central/v/dev.deviceai/speech)](https://central.sonatype.com/artifact/dev.deviceai/speech)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.2-blueviolet?logo=kotlin)](https://kotlinlang.org)
 [![KMP](https://img.shields.io/badge/Kotlin_Multiplatform-Android%20%7C%20iOS%20%7C%20Desktop-blue)](https://www.jetbrains.com/kotlin-multiplatform/)
 
@@ -14,9 +14,9 @@
 
 | Module | Language | Distribution | Status |
 |--------|----------|--------------|--------|
-| `kotlin/core` | Kotlin (Android + KMP) | Maven Central `dev.deviceai:kmp-core` | ✅ Available |
-| `kotlin/speech` | Kotlin (Android + KMP) | Maven Central `dev.deviceai:kmp-speech` | ✅ Available |
-| `kotlin/llm` | Kotlin (Android + KMP) | Maven Central `dev.deviceai:kmp-llm` | ✅ Available |
+| `kotlin/core` | Kotlin (Android + KMP) | Maven Central `dev.deviceai:core` | ✅ Available |
+| `kotlin/speech` | Kotlin (Android + KMP) | Maven Central `dev.deviceai:speech` | ✅ Available |
+| `kotlin/llm` | Kotlin (Android + KMP) | Maven Central `dev.deviceai:llm` | ✅ Available |
 | `ios/speech` | Swift | Swift Package Index | 🗓 Planned |
 | `flutter/speech` | Dart | pub.dev `deviceai_speech` | 🗓 Planned |
 | `react-native/speech` | TypeScript | npm `react-native-deviceai-speech` | 🗓 Planned |
@@ -38,9 +38,9 @@ Each SDK is **independent and native to its platform** — they all call the sam
 ```
 deviceai/
 ├── kotlin/
-│   ├── core/       dev.deviceai:kmp-core    ✅  model management, storage, logging
-│   ├── speech/     dev.deviceai:kmp-speech  ✅  STT (Whisper) + TTS (Piper)
-│   └── llm/        dev.deviceai:kmp-llm     ✅  LLM inference via llama.cpp + offline RAG
+│   ├── core/       dev.deviceai:core    ✅  model management, storage, logging
+│   ├── speech/     dev.deviceai:speech  ✅  STT (Whisper) + TTS (Piper)
+│   └── llm/        dev.deviceai:llm     ✅  LLM inference via llama.cpp + offline RAG
 ├── ios/
 │   └── speech/     Swift Package            🗓  Swift async/await wrapper
 ├── flutter/
@@ -87,12 +87,12 @@ Your App
     ▼
 DeviceAIRuntime.configure(Environment.DEVELOPMENT)   ← one-time SDK init
     │
-    ├── kotlin/core   (dev.deviceai:kmp-core)
+    ├── kotlin/core   (dev.deviceai:core)
     │       CoreSDKLogger — structured, environment-aware logging
     │       ModelRegistry — model discovery, download, local management
     │       PlatformStorage — cross-platform file I/O
     │
-    ├── kotlin/speech  (dev.deviceai:kmp-speech)
+    ├── kotlin/speech  (dev.deviceai:speech)
     │       SpeechBridge — unified STT + TTS Kotlin API
     │       ModelRegistry — Whisper + Piper model catalog from HuggingFace
     │           │
@@ -101,7 +101,7 @@ DeviceAIRuntime.configure(Environment.DEVELOPMENT)   ← one-time SDK init
     │                           ├── whisper.cpp  (STT)
     │                           └── piper + ONNX  (TTS)
     │
-    └── kotlin/llm  (dev.deviceai:kmp-llm)
+    └── kotlin/llm  (dev.deviceai:llm)
             LlmBridge — chat API with streaming Flow<String>
             BM25RagStore — offline retrieval-augmented generation
                 │
@@ -139,9 +139,9 @@ Works in any Kotlin project. No KMP setup required for Android-only projects.
 
 ```kotlin
 // build.gradle.kts
-implementation("dev.deviceai:kmp-core:0.2.0-alpha01")
-implementation("dev.deviceai:kmp-speech:0.2.0-alpha01")   // STT + TTS
-implementation("dev.deviceai:kmp-llm:0.2.0-alpha01")      // LLM inference + RAG
+implementation("dev.deviceai:core:0.2.0-alpha01")
+implementation("dev.deviceai:speech:0.2.0-alpha01")   // STT + TTS
+implementation("dev.deviceai:llm:0.2.0-alpha01")      // LLM inference + RAG
 ```
 
 No extra repository config needed — all artifacts are on Maven Central.
@@ -408,14 +408,14 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for a deep-dive on the native layer, CMak
 - [x] `ModelInfo`, `LocalModel`, `PlatformStorage`, `MetadataStore`
 - [x] `CoreSDKLogger` — structured, environment-aware logging
 - [x] `DeviceAIRuntime` — unified SDK entry point with `Environment` config
-- [x] Published: `dev.deviceai:kmp-core`
+- [x] Published: `dev.deviceai:core`
 
 ### `kotlin/speech` ✅ Available
 - [x] STT via whisper.cpp — Android, iOS, Desktop
 - [x] TTS via Piper + ONNX — Android, iOS, Desktop
 - [x] Model auto-download from HuggingFace
 - [x] Voice activity detection (VAD) — adaptive energy-based, trims silence pre-inference
-- [x] Published: `dev.deviceai:kmp-speech`
+- [x] Published: `dev.deviceai:speech`
 - [ ] Streaming TTS
 
 ### `kotlin/llm` ✅ Available
@@ -425,7 +425,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for a deep-dive on the native layer, CMak
 - [x] Multi-turn conversation with `List<LlmMessage>`
 - [x] Offline RAG via `BM25RagStore` — no embedding model required
 - [x] GPU acceleration (Metal on iOS/macOS, Vulkan on Android)
-- [x] Published: `dev.deviceai:kmp-llm`
+- [x] Published: `dev.deviceai:llm`
 
 ### `ios/speech` 🗓 Planned
 - [ ] Native Swift SDK — links whisper.cpp + piper directly, no KMP dependency
