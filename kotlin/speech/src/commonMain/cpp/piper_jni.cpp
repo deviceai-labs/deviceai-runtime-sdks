@@ -1,10 +1,10 @@
 /**
- * piper_jni.cpp
+ * tts_jni.cpp  (formerly piper_jni.cpp)
  *
  * Thin JNI delegate — converts Android/JVM types to plain C, calls
  * the unified dai_tts_* API in deviceai_speech_engine.{h,cpp}.
  *
- * No TTS logic lives here.
+ * No TTS logic lives here. Engine is sherpa-onnx (VITS or Kokoro).
  */
 
 #include "speech_jni.h"
@@ -66,14 +66,15 @@ extern "C" {
 JNIEXPORT jboolean JNICALL
 Java_dev_deviceai_SpeechBridge_nativeInitTts(
     JNIEnv *env, jobject,
-    jstring modelPath, jstring configPath, jstring espeakDataPath,
+    jstring modelPath, jstring tokensPath, jstring dataDir, jstring voicesPath,
     jint speakerId, jfloat speechRate, jint sampleRate, jfloat sentenceSilence
 ) {
-    std::string model  = jstring_to_std(env, modelPath);
-    std::string config = jstring_to_std(env, configPath);
-    std::string espeak = jstring_to_std(env, espeakDataPath);
+    std::string model   = jstring_to_std(env, modelPath);
+    std::string tokens  = jstring_to_std(env, tokensPath);
+    std::string data    = jstring_to_std(env, dataDir);
+    std::string voices  = jstring_to_std(env, voicesPath);
     return dai_tts_init(
-        model.c_str(), config.c_str(), espeak.c_str(),
+        model.c_str(), tokens.c_str(), data.c_str(), voices.c_str(),
         (int)speakerId, (float)speechRate, (int)sampleRate, (float)sentenceSilence
     ) ? JNI_TRUE : JNI_FALSE;
 }

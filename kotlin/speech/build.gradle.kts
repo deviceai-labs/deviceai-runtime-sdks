@@ -171,7 +171,12 @@ kotlin {
             create("speech") {
                 defFile("src/iosMain/c_interop/speech_ios.def")
                 packageName("dev.deviceai.native")
-                compilerOpts("-I${projectDir}/src/iosMain/c_interop/include")
+                compilerOpts(
+                    "-I${projectDir}/src/iosMain/c_interop/include",
+                    "-I${rootDir}/cpp/speech",
+                    "-I${rootDir}/whisper.cpp/include",
+                    "-I${rootDir}/whisper.cpp"
+                )
                 extraOpts("-libraryPath", libPath)
 
                 tasks.named(interopProcessingTaskName).configure {

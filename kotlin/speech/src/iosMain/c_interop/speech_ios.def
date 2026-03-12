@@ -1,9 +1,5 @@
 headers = deviceai_speech_engine.h
 headerFilter = deviceai_speech_engine.h
-compilerOpts = -I$PROJECT_DIR/../../cpp/speech \
-               -I$PROJECT_DIR/../whisper.cpp/include \
-               -I$PROJECT_DIR/../whisper.cpp \
-               -I$PROJECT_DIR/../piper/src/cpp
 staticLibraries = libspeech_merged.a
 linkerOpts = -framework Accelerate -framework Metal -framework CoreML -lc++ -ObjC
 package = dev.deviceai.native

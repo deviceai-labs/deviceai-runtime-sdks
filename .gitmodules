@@ -1,12 +1,9 @@
 [submodule "whisper.cpp"]
 	path = whisper.cpp
 	url = https://github.com/ggerganov/whisper.cpp.git
-[submodule "piper"]
-	path = piper
-	url = https://github.com/rhasspy/piper.git
-[submodule "espeak-ng"]
-	path = espeak-ng
-	url = https://github.com/espeak-ng/espeak-ng.git
+[submodule "sherpa-onnx"]
+	path = sherpa-onnx
+	url = https://github.com/k2-fsa/sherpa-onnx.git
 [submodule "llama.cpp"]
 	path = llama.cpp
 	url = https://github.com/ggerganov/llama.cpp.git

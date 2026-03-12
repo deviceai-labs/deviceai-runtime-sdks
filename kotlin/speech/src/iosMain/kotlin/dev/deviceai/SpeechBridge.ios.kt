@@ -132,12 +132,13 @@ actual object SpeechBridge {
     //                    TEXT-TO-SPEECH (TTS)
     // ══════════════════════════════════════════════════════════════
 
-    actual fun initTts(modelPath: String, configPath: String, config: TtsConfig): Boolean {
+    actual fun initTts(modelPath: String, tokensPath: String, config: TtsConfig): Boolean {
         return dai_tts_init(
             modelPath,
-            configPath,
+            tokensPath,
             config.espeakDataPath ?: "",
-            config.speakerId ?: -1,
+            config.voicesPath ?: "",
+            config.speakerId ?: 0,
             config.speechRate,
             config.sampleRate,
             config.sentenceSilence

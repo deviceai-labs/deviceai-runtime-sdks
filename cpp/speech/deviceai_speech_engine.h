@@ -212,21 +212,28 @@ void dai_stt_shutdown(void);
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Load a Piper voice model and initialize TTS.
+ * Load a sherpa-onnx TTS voice model and initialize TTS.
  *
- * @param model_path      Absolute path to .onnx voice model
- * @param config_path     Absolute path to .onnx.json voice config
- * @param espeak_data_path Absolute path to espeak-ng data directory (required for phonemization)
- * @param speaker_id      Speaker ID for multi-speaker models (-1 for single-speaker models)
- * @param speech_rate     Playback rate multiplier (1.0 = normal, 0.5 = slow, 2.0 = fast)
- * @param sample_rate     Output sample rate in Hz (typically 22050)
+ * Supports two model families — auto-detected from voices_path:
+ *   - VITS (piper-based or lexicon-based): set voices_path = ""
+ *   - Kokoro (StyleTTS2, best quality):    set voices_path = path to voices.bin
+ *
+ * @param model_path   Absolute path to .onnx voice model
+ * @param tokens_path  Absolute path to tokens.txt
+ * @param data_dir     Absolute path to espeak-ng-data directory.
+ *                     Required by VITS-piper and Kokoro. Pass "" for lexicon-based models.
+ * @param voices_path  Absolute path to voices.bin (Kokoro only). Pass "" for VITS.
+ * @param speaker_id   Speaker ID for multi-speaker models. 0 = default speaker.
+ * @param speech_rate  Playback rate multiplier (1.0 = normal, 0.5 = slow, 2.0 = fast)
+ * @param sample_rate  Output sample rate in Hz (typically 22050)
  * @param sentence_silence Silence in seconds inserted between sentences (e.g. 0.2)
  * @return 1 on success, 0 on failure
  */
 int dai_tts_init(
     const char *model_path,
-    const char *config_path,
-    const char *espeak_data_path,
+    const char *tokens_path,
+    const char *data_dir,
+    const char *voices_path,
     int         speaker_id,
     float       speech_rate,
     int         sample_rate,
@@ -270,7 +277,7 @@ void dai_tts_synthesize_stream(
 /** Cancel an in-progress synthesis. Safe to call from any thread. */
 void dai_tts_cancel(void);
 
-/** Unload the Piper voice model and release all TTS resources. */
+/** Unload the sherpa-onnx TTS engine and release all TTS resources. */
 void dai_tts_shutdown(void);
 
 // ═══════════════════════════════════════════════════════════════════════════

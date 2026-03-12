@@ -14,8 +14,9 @@
 
 #include "deviceai_speech_engine.h"
 #include "whisper.h"
-#include "piper.hpp"
-#include "onnxruntime_cxx_api.h"
+#ifdef HAVE_SHERPA_ONNX
+#  include "sherpa-onnx/c-api/c-api.h"
+#endif
 
 #include <string>
 #include <vector>
@@ -72,29 +73,22 @@ static std::atomic<bool>  g_stt_no_context{true};
 
 // ─── TTS global state ─────────────────────────────────────────────────────────
 
-static piper::PiperConfig       g_tts_config;
-static piper::Voice             g_tts_voice;
-static bool                     g_tts_initialized = false;
+#ifdef HAVE_SHERPA_ONNX
+static SherpaOnnxOfflineTts    *g_tts            = nullptr;
 static std::mutex               g_tts_mutex;
 static std::atomic<bool>        g_tts_cancel{false};
 static std::atomic<int>         g_tts_sample_rate{22050};
+static std::atomic<int>         g_tts_speaker_id{0};
 
 // ─── VAD global state ─────────────────────────────────────────────────────────
-// Silero VAD v4: LSTM-based, 32ms windows (512 samples @ 16kHz).
-// State tensors (h, c) are maintained between windows for streaming use.
-// Reset between independent audio sessions via dai_vad_reset().
+// Silero VAD via sherpa-onnx: segment-based, stateful for streaming.
 
-static Ort::Env                      g_vad_env{ORT_LOGGING_LEVEL_WARNING, "DeviceAI-VAD"};
-static std::unique_ptr<Ort::Session> g_vad_session;
-static float                         g_vad_threshold  = 0.5f;
-static int                           g_vad_sample_rate_val = 16000;
-static std::vector<float>            g_vad_h(2 * 1 * 64, 0.0f);  // LSTM hidden [2,1,64]
-static std::vector<float>            g_vad_c(2 * 1 * 64, 0.0f);  // LSTM cell   [2,1,64]
-static std::atomic<bool>             g_vad_in_speech{false};
-static std::mutex                    g_vad_mutex;
-
-static const int VAD_WINDOW = 512;   // 32ms at 16kHz
-static const int VAD_PAD    = 10;    // ~320ms end-of-speech padding (10 * 512 samples)
+static SherpaOnnxVoiceActivityDetector *g_vad          = nullptr;
+static float                            g_vad_threshold = 0.5f;
+static int                              g_vad_sample_rate_val = 16000;
+static std::atomic<bool>                g_vad_in_speech{false};
+static std::mutex                       g_vad_mutex;
+#endif // HAVE_SHERPA_ONNX
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MARK: - Shared C string helpers
@@ -250,64 +244,8 @@ static void resample_to_16k(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MARK: - Silero VAD (internal helpers)
+// MARK: - Silero VAD (internal helpers via sherpa-onnx)
 // ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * Run Silero VAD on a single 512-sample window.
- *
- * Updates g_vad_h / g_vad_c LSTM state in-place so consecutive calls
- * form a coherent stream. Call dai_vad_reset() to clear state between
- * independent audio sessions.
- *
- * @return Speech probability [0.0, 1.0], or -1.0 if VAD not initialized.
- */
-static float run_silero_window(const float *samples, int n_samples) {
-    if (!g_vad_session) return -1.0f;
-
-    auto mem_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-
-    // Input: [1, n_samples]
-    std::array<int64_t, 2> input_shape  = {1, n_samples};
-    // sr: [1]
-    std::array<int64_t, 1> sr_shape     = {1};
-    // h, c: [2, 1, 64]
-    std::array<int64_t, 3> state_shape  = {2, 1, 64};
-
-    int64_t sr_val = g_vad_sample_rate_val;
-
-    Ort::Value inputs[4] = {
-        Ort::Value::CreateTensor<float>(
-            mem_info, const_cast<float *>(samples), n_samples,
-            input_shape.data(), input_shape.size()),
-        Ort::Value::CreateTensor<int64_t>(
-            mem_info, &sr_val, 1,
-            sr_shape.data(), sr_shape.size()),
-        Ort::Value::CreateTensor<float>(
-            mem_info, g_vad_h.data(), g_vad_h.size(),
-            state_shape.data(), state_shape.size()),
-        Ort::Value::CreateTensor<float>(
-            mem_info, g_vad_c.data(), g_vad_c.size(),
-            state_shape.data(), state_shape.size()),
-    };
-
-    const char *input_names[]  = {"input", "sr", "h", "c"};
-    const char *output_names[] = {"output", "hn", "cn"};
-
-    auto outputs = g_vad_session->Run(
-        Ort::RunOptions{nullptr},
-        input_names,  inputs,  4,
-        output_names, 3
-    );
-
-    // Update LSTM state for next window
-    float *hn = outputs[1].GetTensorMutableData<float>();
-    float *cn = outputs[2].GetTensorMutableData<float>();
-    std::copy(hn, hn + g_vad_h.size(), g_vad_h.begin());
-    std::copy(cn, cn + g_vad_c.size(), g_vad_c.begin());
-
-    return *outputs[0].GetTensorMutableData<float>();
-}
 
 /**
  * Adaptive energy-based VAD (fallback when Silero not initialized).
@@ -351,48 +289,43 @@ static bool apply_energy_vad(std::vector<float> &audio) {
 /**
  * Apply VAD to a batch audio buffer (used internally by STT).
  *
- * Dispatches to Silero if initialized, otherwise energy-based fallback.
- * Resets Silero state before batch processing (each STT call is independent).
+ * Uses sherpa-onnx Silero VAD if initialized — collects all speech segments,
+ * trims audio to span from first to last segment.
+ * Falls back to energy-based VAD if sherpa-onnx VAD not initialized.
  */
 static bool apply_vad(std::vector<float> &audio) {
-    if (!g_vad_session) {
-        STT_LOGD("VAD: using energy-based fallback (Silero not initialized)");
-        return apply_energy_vad(audio);
-    }
+#ifdef HAVE_SHERPA_ONNX
+    if (g_vad) {
+        float before_sec = static_cast<float>(audio.size()) / WHISPER_SAMPLE_RATE;
 
-    // Reset LSTM state for this independent batch
-    std::fill(g_vad_h.begin(), g_vad_h.end(), 0.0f);
-    std::fill(g_vad_c.begin(), g_vad_c.end(), 0.0f);
+        SherpaOnnxVoiceActivityDetectorAcceptWaveform(g_vad, audio.data(), (int)audio.size());
+        SherpaOnnxVoiceActivityDetectorFlush(g_vad);
 
-    int n_windows = static_cast<int>(audio.size()) / VAD_WINDOW;
-    if (n_windows == 0) return false;
-
-    std::vector<float> probs(n_windows);
-    for (int i = 0; i < n_windows; i++)
-        probs[i] = run_silero_window(audio.data() + i * VAD_WINDOW, VAD_WINDOW);
-
-    int first_speech = -1, last_speech = -1;
-    for (int i = 0; i < n_windows; i++) {
-        if (probs[i] >= g_vad_threshold) {
-            if (first_speech < 0) first_speech = i;
-            last_speech = i;
+        int first_sample = -1, last_sample = -1;
+        while (!SherpaOnnxVoiceActivityDetectorEmpty(g_vad)) {
+            const SherpaOnnxSpeechSegment *seg = SherpaOnnxVoiceActivityDetectorFront(g_vad);
+            if (first_sample < 0) first_sample = seg->start;
+            last_sample = seg->start + seg->n;
+            SherpaOnnxDestroySpeechSegment(seg);
+            SherpaOnnxVoiceActivityDetectorPop(g_vad);
         }
+
+        if (first_sample < 0) {
+            STT_LOGI("Silero VAD: no speech detected");
+            return false;
+        }
+
+        int start = std::max(0, first_sample);
+        int end   = std::min((int)audio.size(), last_sample);
+        float after_sec = static_cast<float>(end - start) / WHISPER_SAMPLE_RATE;
+        STT_LOGI("Silero VAD: trimmed %.2fs -> %.2fs", before_sec, after_sec);
+
+        audio = std::vector<float>(audio.begin() + start, audio.begin() + end);
+        return true;
     }
-
-    if (first_speech < 0) {
-        STT_LOGI("Silero VAD: no speech detected");
-        return false;
-    }
-
-    int start = std::max(0,         first_speech - VAD_PAD) * VAD_WINDOW;
-    int end   = std::min(n_windows, last_speech  + VAD_PAD + 1) * VAD_WINDOW;
-
-    float before_sec = static_cast<float>(audio.size()) / WHISPER_SAMPLE_RATE;
-    float after_sec  = static_cast<float>(end - start)  / WHISPER_SAMPLE_RATE;
-    STT_LOGI("Silero VAD: trimmed %.2fs → %.2fs", before_sec, after_sec);
-
-    audio = std::vector<float>(audio.begin() + start, audio.begin() + end);
-    return true;
+#endif
+    STT_LOGD("VAD: using energy-based fallback (Silero not initialized)");
+    return apply_energy_vad(audio);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -653,13 +586,23 @@ void dai_stt_shutdown(void) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MARK: - Public C API — TTS
+// MARK: - Public C API — TTS (sherpa-onnx)
 // ═══════════════════════════════════════════════════════════════════════════
+
+#ifdef HAVE_SHERPA_ONNX
+
+// Internal helper: float32 → int16 with clipping
+static inline int16_t float_to_int16(float s) {
+    if (s >  1.0f) s =  1.0f;
+    if (s < -1.0f) s = -1.0f;
+    return static_cast<int16_t>(s * 32767.0f);
+}
 
 int dai_tts_init(
     const char *model_path,
-    const char *config_path,
-    const char *espeak_data_path,
+    const char *tokens_path,
+    const char *data_dir,
+    const char *voices_path,
     int         speaker_id,
     float       speech_rate,
     int         sample_rate,
@@ -667,110 +610,135 @@ int dai_tts_init(
 ) {
     std::lock_guard<std::mutex> lock(g_tts_mutex);
 
-    if (g_tts_initialized) {
-        piper::terminate(g_tts_config);
-        g_tts_initialized = false;
-    }
+    if (g_tts) { SherpaOnnxDestroyOfflineTts(g_tts); g_tts = nullptr; }
 
     g_tts_sample_rate = sample_rate;
+    g_tts_speaker_id  = speaker_id;
 
-    TTS_LOGI("Initializing Piper: model=%s espeak=%s", model_path, espeak_data_path);
+    float length_scale = (speech_rate > 0.0f) ? 1.0f / speech_rate : 1.0f;
+    bool  is_kokoro    = voices_path && voices_path[0] != '\0';
 
-    try {
-        g_tts_config.eSpeakDataPath = espeak_data_path ? espeak_data_path : "";
-        piper::initialize(g_tts_config);
+    SherpaOnnxOfflineTtsModelConfig model_cfg;
+    memset(&model_cfg, 0, sizeof(model_cfg));
+    model_cfg.num_threads = 2;
+    model_cfg.debug       = 0;
+    model_cfg.provider    = "cpu";
 
-        std::optional<piper::SpeakerId> sid;
-        if (speaker_id >= 0)
-            sid = static_cast<piper::SpeakerId>(speaker_id);
+    if (is_kokoro) {
+        model_cfg.kokoro.model       = model_path;
+        model_cfg.kokoro.voices      = voices_path;
+        model_cfg.kokoro.tokens      = tokens_path ? tokens_path : "";
+        model_cfg.kokoro.data_dir    = data_dir    ? data_dir    : "";
+        model_cfg.kokoro.length_scale = length_scale;
+    } else {
+        model_cfg.vits.model         = model_path;
+        model_cfg.vits.tokens        = tokens_path ? tokens_path : "";
+        model_cfg.vits.data_dir      = data_dir    ? data_dir    : "";
+        model_cfg.vits.noise_scale   = 0.667f;
+        model_cfg.vits.noise_scale_w = 0.8f;
+        model_cfg.vits.length_scale  = length_scale;
+    }
 
-        piper::loadVoice(g_tts_config, model_path, config_path, g_tts_voice, sid, /*cuda=*/false);
+    SherpaOnnxOfflineTtsConfig cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.model             = model_cfg;
+    cfg.max_num_sentences = 2;
+    // Note: sentence_silence is model-dependent; stored but not directly
+    // configurable in the sherpa-onnx C API — handled internally by the voice model.
+    (void)sentence_silence;
 
-        if (speech_rate != 1.0f)
-            g_tts_voice.synthesisConfig.lengthScale = 1.0f / speech_rate;
-        g_tts_voice.synthesisConfig.sentenceSilenceSeconds = sentence_silence;
-
-        g_tts_initialized = true;
-        TTS_LOGI("TTS ready (rate=%dHz speaker=%d)", sample_rate, speaker_id);
-        return 1;
-
-    } catch (const std::exception &e) {
-        TTS_LOGE("Init failed: %s", e.what());
+    g_tts = SherpaOnnxCreateOfflineTts(&cfg);
+    if (!g_tts) {
+        TTS_LOGE("Failed to create TTS engine: model=%s", model_path);
         return 0;
     }
+
+    TTS_LOGI("TTS ready (%s, rate=%dHz speaker=%d)",
+             is_kokoro ? "Kokoro" : "VITS", sample_rate, speaker_id);
+    return 1;
 }
 
 int16_t *dai_tts_synthesize(const char *text, int *out_length) {
     std::lock_guard<std::mutex> lock(g_tts_mutex);
-
-    if (!g_tts_initialized) {
-        TTS_LOGE("Not initialized");
-        *out_length = 0;
-        return nullptr;
-    }
+    if (!g_tts) { TTS_LOGE("Not initialized"); *out_length = 0; return nullptr; }
 
     g_tts_cancel = false;
 
-    try {
-        std::vector<int16_t> audio;
-        piper::SynthesisResult result;
-        piper::textToAudio(g_tts_config, g_tts_voice, text, audio, result, []() {});
+    const SherpaOnnxGeneratedAudio *audio =
+        SherpaOnnxOfflineTtsGenerate(g_tts, text, g_tts_speaker_id.load(), 1.0f);
 
-        if (audio.empty()) {
-            TTS_LOGE("No audio produced");
-            *out_length = 0;
-            return nullptr;
-        }
-
-        TTS_LOGD("Synthesized %zu samples (%.2fs, RTF %.2f)",
-                 audio.size(), result.audioSeconds, result.realTimeFactor);
-
-        int16_t *out = static_cast<int16_t *>(malloc(audio.size() * sizeof(int16_t)));
-        if (out) {
-            memcpy(out, audio.data(), audio.size() * sizeof(int16_t));
-            *out_length = static_cast<int>(audio.size());
-        } else {
-            *out_length = 0;
-        }
-        return out;
-
-    } catch (const std::exception &e) {
-        TTS_LOGE("Synthesis failed: %s", e.what());
+    if (!audio || audio->n == 0) {
+        TTS_LOGE("No audio produced");
+        if (audio) SherpaOnnxDestroyOfflineTtsGeneratedAudio(audio);
         *out_length = 0;
         return nullptr;
     }
+
+    TTS_LOGD("Synthesized %d samples at %dHz", audio->n, audio->sample_rate);
+
+    int16_t *out = static_cast<int16_t *>(malloc(audio->n * sizeof(int16_t)));
+    if (out) {
+        for (int i = 0; i < audio->n; i++) out[i] = float_to_int16(audio->samples[i]);
+        *out_length = audio->n;
+    } else {
+        *out_length = 0;
+    }
+
+    SherpaOnnxDestroyOfflineTtsGeneratedAudio(audio);
+    return out;
 }
 
 int dai_tts_synthesize_to_file(const char *text, const char *output_path) {
     std::lock_guard<std::mutex> lock(g_tts_mutex);
-
-    if (!g_tts_initialized) {
-        TTS_LOGE("Not initialized");
-        return 0;
-    }
+    if (!g_tts) { TTS_LOGE("Not initialized"); return 0; }
 
     g_tts_cancel = false;
 
-    try {
-        std::vector<int16_t> audio;
-        piper::SynthesisResult result;
-        piper::textToAudio(g_tts_config, g_tts_voice, text, audio, result, []() {});
+    const SherpaOnnxGeneratedAudio *audio =
+        SherpaOnnxOfflineTtsGenerate(g_tts, text, g_tts_speaker_id.load(), 1.0f);
 
-        if (audio.empty()) {
-            TTS_LOGE("No audio produced");
-            return 0;
-        }
-
-        int sr = g_tts_voice.synthesisConfig.sampleRate;
-        if (!write_wav_file(output_path, audio, sr)) return 0;
-
-        TTS_LOGI("Wrote %zu samples to %s (%.2fs)", audio.size(), output_path, result.audioSeconds);
-        return 1;
-
-    } catch (const std::exception &e) {
-        TTS_LOGE("Synthesis failed: %s", e.what());
+    if (!audio || audio->n == 0) {
+        TTS_LOGE("No audio produced");
+        if (audio) SherpaOnnxDestroyOfflineTtsGeneratedAudio(audio);
         return 0;
     }
+
+    // Convert float → int16 for WAV
+    std::vector<int16_t> pcm(audio->n);
+    for (int i = 0; i < audio->n; i++) pcm[i] = float_to_int16(audio->samples[i]);
+
+    int sr = audio->sample_rate;
+    SherpaOnnxDestroyOfflineTtsGeneratedAudio(audio);
+
+    if (!write_wav_file(output_path, pcm, sr)) return 0;
+
+    TTS_LOGI("Wrote %zu samples to %s", pcm.size(), output_path);
+    return 1;
+}
+
+// Streaming context passed to the sherpa-onnx callback
+struct TtsStreamState {
+    dai_tts_chunk_cb     on_chunk;
+    dai_tts_complete_cb  on_complete;
+    dai_tts_error_cb     on_error;
+    void                *user_data;
+    std::atomic<bool>   *cancel;
+};
+
+// Called by sherpa-onnx as each sentence is synthesized. Return 1 = continue, 0 = stop.
+static int32_t tts_stream_callback(const float *samples, int32_t n, void *arg) {
+    auto *state = static_cast<TtsStreamState *>(arg);
+    if (!samples || n == 0 || state->cancel->load()) return 0;
+
+    // Convert float → int16 and deliver in 4096-sample chunks (~185ms at 22050Hz)
+    const int CHUNK = 4096;
+    for (int offset = 0; offset < n && !state->cancel->load(); offset += CHUNK) {
+        int len = std::min(CHUNK, n - offset);
+        std::vector<int16_t> pcm(len);
+        for (int i = 0; i < len; i++) pcm[i] = float_to_int16(samples[offset + i]);
+        if (state->on_chunk) state->on_chunk(pcm.data(), len, state->user_data);
+    }
+    return state->cancel->load() ? 0 : 1;
 }
 
 void dai_tts_synthesize_stream(
@@ -781,39 +749,21 @@ void dai_tts_synthesize_stream(
     void                *user_data
 ) {
     std::lock_guard<std::mutex> lock(g_tts_mutex);
-
-    if (!g_tts_initialized) {
+    if (!g_tts) {
         if (on_error) on_error("TTS not initialized", user_data);
         return;
     }
 
     g_tts_cancel = false;
 
-    try {
-        std::vector<int16_t> audio;
-        piper::SynthesisResult result;
+    TtsStreamState state{on_chunk, on_complete, on_error, user_data, &g_tts_cancel};
 
-        // Piper synthesizes all at once; we chunk for streaming playback.
-        piper::textToAudio(g_tts_config, g_tts_voice, text, audio, result, [&]() {
-            if (g_tts_cancel.load()) throw std::runtime_error("Cancelled");
-        });
+    SherpaOnnxOfflineTtsGenerateWithCallbackWithContext(
+        g_tts, text, g_tts_speaker_id.load(), 1.0f,
+        tts_stream_callback, &state);
 
-        if (g_tts_cancel.load() || audio.empty()) {
-            if (!g_tts_cancel.load() && on_error) on_error("No audio produced", user_data);
-            return;
-        }
-
-        // Deliver in ~185ms chunks (4096 samples at 22050 Hz)
-        const size_t CHUNK = 4096;
-        for (size_t i = 0; i < audio.size() && !g_tts_cancel.load(); i += CHUNK) {
-            size_t len = std::min(CHUNK, audio.size() - i);
-            if (on_chunk) on_chunk(&audio[i], static_cast<int>(len), user_data);
-        }
-
-        if (!g_tts_cancel.load() && on_complete) on_complete(user_data);
-
-    } catch (const std::exception &e) {
-        if (!g_tts_cancel.load() && on_error) on_error(e.what(), user_data);
+    if (!g_tts_cancel.load()) {
+        if (on_complete) on_complete(user_data);
     }
 }
 
@@ -823,56 +773,90 @@ void dai_tts_cancel(void) {
 
 void dai_tts_shutdown(void) {
     std::lock_guard<std::mutex> lock(g_tts_mutex);
-    if (g_tts_initialized) {
+    if (g_tts) {
         TTS_LOGI("Shutdown");
-        piper::terminate(g_tts_config);
-        g_tts_initialized = false;
+        SherpaOnnxDestroyOfflineTts(g_tts);
+        g_tts = nullptr;
     }
 }
 
+#else // !HAVE_SHERPA_ONNX
+
+int dai_tts_init(const char *, const char *, const char *, const char *,
+                 int, float, int, float) {
+    TTS_LOGE("TTS not available (sherpa-onnx not compiled in)");
+    return 0;
+}
+int16_t *dai_tts_synthesize(const char *, int *out_length) {
+    *out_length = 0; return nullptr;
+}
+int dai_tts_synthesize_to_file(const char *, const char *) { return 0; }
+void dai_tts_synthesize_stream(const char *, dai_tts_chunk_cb, dai_tts_complete_cb,
+                                dai_tts_error_cb on_error, void *user_data) {
+    if (on_error) on_error("TTS not available", user_data);
+}
+void dai_tts_cancel(void)   {}
+void dai_tts_shutdown(void) {}
+
+#endif // HAVE_SHERPA_ONNX
+
 // ═══════════════════════════════════════════════════════════════════════════
-// MARK: - Public C API — VAD
+// MARK: - Public C API — VAD (sherpa-onnx Silero VAD)
 // ═══════════════════════════════════════════════════════════════════════════
+
+#ifdef HAVE_SHERPA_ONNX
 
 int dai_vad_init(const char *model_path, float threshold, int sample_rate) {
     std::lock_guard<std::mutex> lock(g_vad_mutex);
 
-    g_vad_session.reset();
+    if (g_vad) { SherpaOnnxDestroyVoiceActivityDetector(g_vad); g_vad = nullptr; }
+
     g_vad_threshold       = threshold;
     g_vad_sample_rate_val = sample_rate;
-    std::fill(g_vad_h.begin(), g_vad_h.end(), 0.0f);
-    std::fill(g_vad_c.begin(), g_vad_c.end(), 0.0f);
-    g_vad_in_speech = false;
+    g_vad_in_speech       = false;
 
-    try {
-        Ort::SessionOptions opts;
-        opts.SetIntraOpNumThreads(1);
-        opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
-        g_vad_session = std::make_unique<Ort::Session>(g_vad_env, model_path, opts);
-        STT_LOGI("Silero VAD initialized: threshold=%.2f rate=%d", threshold, sample_rate);
-        return 1;
-    } catch (const std::exception &e) {
-        STT_LOGE("VAD init failed: %s", e.what());
+    SherpaOnnxSileroVadModelConfig silero;
+    memset(&silero, 0, sizeof(silero));
+    silero.model                = model_path;
+    silero.threshold            = threshold;
+    silero.min_silence_duration = 0.25f;
+    silero.min_speech_duration  = 0.1f;
+    silero.max_speech_duration  = 30.0f;
+    silero.window_size          = 512;  // 32ms at 16kHz
+
+    SherpaOnnxVadModelConfig cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.silero_vad  = silero;
+    cfg.sample_rate = sample_rate;
+    cfg.num_threads = 1;
+    cfg.debug       = 0;
+
+    // Buffer size: 10 seconds of audio
+    g_vad = SherpaOnnxCreateVoiceActivityDetector(&cfg, 10.0f);
+    if (!g_vad) {
+        STT_LOGE("Failed to create Silero VAD: %s", model_path);
         return 0;
     }
+
+    STT_LOGI("Silero VAD initialized: threshold=%.2f rate=%d", threshold, sample_rate);
+    return 1;
 }
 
 int dai_vad_is_speech(const float *samples, int n_samples) {
     std::lock_guard<std::mutex> lock(g_vad_mutex);
-    if (!g_vad_session) return 0;
+    if (!g_vad) return 0;
 
-    // Reset state for single-shot check
-    std::fill(g_vad_h.begin(), g_vad_h.end(), 0.0f);
-    std::fill(g_vad_c.begin(), g_vad_c.end(), 0.0f);
+    SherpaOnnxVoiceActivityDetectorAcceptWaveform(g_vad, samples, n_samples);
+    SherpaOnnxVoiceActivityDetectorFlush(g_vad);
 
-    int n_windows = n_samples / VAD_WINDOW;
-    if (n_windows == 0) return 0;
-
-    float total = 0.0f;
-    for (int i = 0; i < n_windows; i++)
-        total += run_silero_window(samples + i * VAD_WINDOW, VAD_WINDOW);
-
-    return (total / n_windows) >= g_vad_threshold ? 1 : 0;
+    int detected = 0;
+    while (!SherpaOnnxVoiceActivityDetectorEmpty(g_vad)) {
+        const SherpaOnnxSpeechSegment *seg = SherpaOnnxVoiceActivityDetectorFront(g_vad);
+        if (seg->n > 0) detected = 1;
+        SherpaOnnxDestroySpeechSegment(seg);
+        SherpaOnnxVoiceActivityDetectorPop(g_vad);
+    }
+    return detected;
 }
 
 void dai_vad_process_stream(
@@ -883,47 +867,52 @@ void dai_vad_process_stream(
     void                   *user_data
 ) {
     std::lock_guard<std::mutex> lock(g_vad_mutex);
-    if (!g_vad_session) return;
+    if (!g_vad) return;
 
-    // Process in VAD_WINDOW chunks; state carries across chunks (streaming)
-    static int silence_frames = 0;
+    SherpaOnnxVoiceActivityDetectorAcceptWaveform(g_vad, samples, n_samples);
 
-    int n_windows = n_samples / VAD_WINDOW;
-    for (int i = 0; i < n_windows; i++) {
-        float prob = run_silero_window(samples + i * VAD_WINDOW, VAD_WINDOW);
-        bool  is_speech = prob >= g_vad_threshold;
+    while (!SherpaOnnxVoiceActivityDetectorEmpty(g_vad)) {
+        const SherpaOnnxSpeechSegment *seg = SherpaOnnxVoiceActivityDetectorFront(g_vad);
 
-        if (is_speech) {
-            silence_frames = 0;
-            if (!g_vad_in_speech.exchange(true)) {
+        // Each segment represents a speech region — fire start then end
+        if (seg->n > 0) {
+            if (!g_vad_in_speech.exchange(true))
                 if (on_speech_start) on_speech_start(user_data);
-            }
-        } else if (g_vad_in_speech.load()) {
-            silence_frames++;
-            // End of speech after VAD_PAD consecutive silent windows (~320ms)
-            if (silence_frames >= VAD_PAD) {
-                silence_frames = 0;
-                g_vad_in_speech = false;
-                if (on_speech_end) on_speech_end(user_data);
-            }
+            g_vad_in_speech = false;
+            if (on_speech_end) on_speech_end(user_data);
         }
+
+        SherpaOnnxDestroySpeechSegment(seg);
+        SherpaOnnxVoiceActivityDetectorPop(g_vad);
     }
 }
 
 void dai_vad_reset(void) {
     std::lock_guard<std::mutex> lock(g_vad_mutex);
-    std::fill(g_vad_h.begin(), g_vad_h.end(), 0.0f);
-    std::fill(g_vad_c.begin(), g_vad_c.end(), 0.0f);
+    if (g_vad) SherpaOnnxVoiceActivityDetectorReset(g_vad);
     g_vad_in_speech = false;
 }
 
 void dai_vad_shutdown(void) {
     std::lock_guard<std::mutex> lock(g_vad_mutex);
-    if (g_vad_session) {
-        g_vad_session.reset();
+    if (g_vad) {
+        SherpaOnnxDestroyVoiceActivityDetector(g_vad);
+        g_vad = nullptr;
         STT_LOGI("Silero VAD shutdown");
     }
 }
+
+#else // !HAVE_SHERPA_ONNX
+
+int  dai_vad_init(const char *, float, int) { return 0; }
+int  dai_vad_is_speech(const float *, int)  { return 0; }
+void dai_vad_process_stream(const float *, int,
+                             dai_vad_speech_start_cb, dai_vad_speech_end_cb,
+                             void *) {}
+void dai_vad_reset(void)    {}
+void dai_vad_shutdown(void) {}
+
+#endif // HAVE_SHERPA_ONNX
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MARK: - Shared utilities

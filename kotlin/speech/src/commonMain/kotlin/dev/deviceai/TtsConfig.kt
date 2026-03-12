@@ -26,7 +26,12 @@ data class TtsConfig(
 
     /**
      * Path to espeak-ng-data directory.
-     * Required for phonemization. On Android/iOS this is extracted from assets.
+     * Required by VITS-piper and Kokoro models. Pass null for lexicon-based VITS.
      */
-    val espeakDataPath: String? = null
+    val espeakDataPath: String? = null,
+
+    /**
+     * Path to voices.bin (Kokoro models only). Pass null for VITS models.
+     */
+    val voicesPath: String? = null
 )

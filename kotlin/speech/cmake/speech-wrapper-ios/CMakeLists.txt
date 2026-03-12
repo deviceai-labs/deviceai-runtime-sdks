@@ -14,31 +14,23 @@ endif()
 # Build static libraries
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 
-# Option to enable/disable TTS (piper)
-option(SPEECHKMP_ENABLE_TTS "Enable Text-to-Speech (requires ONNX Runtime)" OFF)
-
 # ═══════════════════════════════════════════════════════════════
 #                        PATHS
 # ═══════════════════════════════════════════════════════════════
 
-set(WHISPER_DIR "${CMAKE_SOURCE_DIR}/../../../../whisper.cpp")
-set(PIPER_DIR   "${CMAKE_SOURCE_DIR}/../../../../piper")
-set(ONNX_DIR    "${CMAKE_SOURCE_DIR}/../../../../onnxruntime")
-set(ESPEAK_DIR  "${CMAKE_SOURCE_DIR}/../../../../espeak-ng")
-set(ENGINE_DIR  "${CMAKE_SOURCE_DIR}/../../../../cpp/speech")
+set(WHISPER_DIR     "${CMAKE_SOURCE_DIR}/../../../../whisper.cpp")
+set(SHERPA_ONNX_DIR "${CMAKE_SOURCE_DIR}/../../../../sherpa-onnx")
+set(ENGINE_DIR      "${CMAKE_SOURCE_DIR}/../../../../cpp/speech")
 
 # ═══════════════════════════════════════════════════════════════
 #                      WHISPER.CPP (STT)
 # ═══════════════════════════════════════════════════════════════
 
-# Disable unnecessary features, enable Metal and Core ML for iOS
-set(WHISPER_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(WHISPER_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
 set(WHISPER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(GGML_METAL ON CACHE BOOL "" FORCE)
-set(GGML_ACCELERATE ON CACHE BOOL "" FORCE)
-
-# Core ML support for Apple Neural Engine acceleration
-set(WHISPER_COREML ON CACHE BOOL "" FORCE)
+set(GGML_METAL             ON  CACHE BOOL "" FORCE)
+set(GGML_ACCELERATE        ON  CACHE BOOL "" FORCE)
+set(WHISPER_COREML         ON  CACHE BOOL "" FORCE)
 set(WHISPER_COREML_ALLOW_FALLBACK ON CACHE BOOL "" FORCE)
 
 if(EXISTS ${WHISPER_DIR}/CMakeLists.txt)
@@ -50,15 +42,33 @@ else()
 endif()
 
 # ═══════════════════════════════════════════════════════════════
+#                    TTS + VAD (SHERPA-ONNX)
+# ═══════════════════════════════════════════════════════════════
+
+set(SHERPA_ONNX_ENABLE_TESTS     OFF CACHE BOOL "" FORCE)
+set(SHERPA_ONNX_ENABLE_PYTHON    OFF CACHE BOOL "" FORCE)
+set(SHERPA_ONNX_ENABLE_CHECK     OFF CACHE BOOL "" FORCE)
+set(SHERPA_ONNX_ENABLE_PORTAUDIO OFF CACHE BOOL "" FORCE)
+set(SHERPA_ONNX_ENABLE_JNI       OFF CACHE BOOL "" FORCE)
+set(SHERPA_ONNX_ENABLE_C_API     ON  CACHE BOOL "" FORCE)
+set(SHERPA_ONNX_ENABLE_BINARY    OFF CACHE BOOL "" FORCE)
+set(SHERPA_ONNX_ENABLE_TTS       ON  CACHE BOOL "" FORCE)
+
+if(EXISTS ${SHERPA_ONNX_DIR}/CMakeLists.txt)
+    add_subdirectory(${SHERPA_ONNX_DIR} sherpa-onnx-build EXCLUDE_FROM_ALL)
+    set(SHERPA_ONNX_FOUND TRUE)
+else()
+    message(WARNING "sherpa-onnx not found at ${SHERPA_ONNX_DIR}. TTS and neural VAD will be unavailable.")
+    set(SHERPA_ONNX_FOUND FALSE)
+endif()
+
+# ═══════════════════════════════════════════════════════════════
 #                    iOS WRAPPER LIBRARY
 # ═══════════════════════════════════════════════════════════════
 
-# Source files - only include whisper for now
-set(SPEECH_SOURCES
+add_library(speech_static STATIC
     ${ENGINE_DIR}/deviceai_speech_engine.cpp
 )
-
-add_library(speech_static STATIC ${SPEECH_SOURCES})
 
 target_include_directories(speech_static PRIVATE
     ${ENGINE_DIR}
@@ -66,17 +76,17 @@ target_include_directories(speech_static PRIVATE
     ${WHISPER_DIR}
 )
 
-# Compile definitions
-if(NOT SPEECHKMP_ENABLE_TTS)
-    target_compile_definitions(speech_static PRIVATE SPEECHKMP_STT_ONLY=1)
+if(SHERPA_ONNX_FOUND)
+    target_include_directories(speech_static PRIVATE ${SHERPA_ONNX_DIR})
+    target_compile_definitions(speech_static PRIVATE HAVE_SHERPA_ONNX=1)
+    target_link_libraries(speech_static sherpa-onnx-c-api)
 endif()
 
-# Link whisper
 if(WHISPER_FOUND AND TARGET whisper)
     target_link_libraries(speech_static whisper)
 endif()
 
-# iOS frameworks (Foundation required for CoreML)
+# iOS frameworks
 target_link_libraries(speech_static
     "-framework Foundation"
     "-framework Accelerate"

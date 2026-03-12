@@ -65,12 +65,13 @@ actual object SpeechBridge {
     //                    TEXT-TO-SPEECH (TTS)
     // ══════════════════════════════════════════════════════════════
 
-    actual fun initTts(modelPath: String, configPath: String, config: TtsConfig): Boolean =
+    actual fun initTts(modelPath: String, tokensPath: String, config: TtsConfig): Boolean =
         nativeInitTts(
             modelPath,
-            configPath,
+            tokensPath,
             config.espeakDataPath ?: "",
-            config.speakerId ?: -1,
+            config.voicesPath ?: "",
+            config.speakerId ?: 0,
             config.speechRate,
             config.sampleRate,
             config.sentenceSilence
@@ -146,8 +147,9 @@ actual object SpeechBridge {
     // TTS
     private external fun nativeInitTts(
         modelPath: String,
-        configPath: String,
-        espeakDataPath: String,
+        tokensPath: String,
+        dataDir: String,
+        voicesPath: String,
         speakerId: Int,
         speechRate: Float,
         sampleRate: Int,

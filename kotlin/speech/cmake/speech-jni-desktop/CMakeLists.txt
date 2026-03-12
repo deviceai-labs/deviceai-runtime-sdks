@@ -9,29 +9,27 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 #                        PATHS
 # ═══════════════════════════════════════════════════════════════
 
-set(WHISPER_DIR  "${CMAKE_SOURCE_DIR}/../../../../whisper.cpp")
-set(PIPER_DIR    "${CMAKE_SOURCE_DIR}/../../../../piper")
-set(ONNX_DIR     "${CMAKE_SOURCE_DIR}/../../../../onnxruntime")
-set(ESPEAK_DIR   "${CMAKE_SOURCE_DIR}/../../../../espeak-ng")
-set(ENGINE_DIR   "${CMAKE_SOURCE_DIR}/../../../../cpp/speech")
-set(JNI_CPP_DIR  "${PROJECT_SOURCE_DIR}/../../src/commonMain/cpp")
+set(WHISPER_DIR     "${CMAKE_SOURCE_DIR}/../../../../whisper.cpp")
+set(SHERPA_ONNX_DIR "${CMAKE_SOURCE_DIR}/../../../../sherpa-onnx")
+set(ENGINE_DIR      "${CMAKE_SOURCE_DIR}/../../../../cpp/speech")
+set(JNI_CPP_DIR     "${PROJECT_SOURCE_DIR}/../../src/commonMain/cpp")
 
 # ═══════════════════════════════════════════════════════════════
 #                      WHISPER.CPP
 # ═══════════════════════════════════════════════════════════════
 
-set(WHISPER_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(WHISPER_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
 set(WHISPER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 
 # Enable Metal and Core ML on macOS
 if(APPLE)
-    set(GGML_METAL ON CACHE BOOL "" FORCE)
-    set(GGML_ACCELERATE ON CACHE BOOL "" FORCE)
-    set(WHISPER_COREML ON CACHE BOOL "" FORCE)
+    set(GGML_METAL               ON  CACHE BOOL "" FORCE)
+    set(GGML_ACCELERATE          ON  CACHE BOOL "" FORCE)
+    set(WHISPER_COREML           ON  CACHE BOOL "" FORCE)
     set(WHISPER_COREML_ALLOW_FALLBACK ON CACHE BOOL "" FORCE)
 else()
-    set(GGML_METAL OFF CACHE BOOL "" FORCE)
-    set(WHISPER_COREML OFF CACHE BOOL "" FORCE)
+    set(GGML_METAL               OFF CACHE BOOL "" FORCE)
+    set(WHISPER_COREML           OFF CACHE BOOL "" FORCE)
 endif()
 
 if(EXISTS ${WHISPER_DIR}/CMakeLists.txt)
@@ -41,57 +39,24 @@ else()
 endif()
 
 # ═══════════════════════════════════════════════════════════════
-#                         PIPER
+#                    TTS + VAD (SHERPA-ONNX)
 # ═══════════════════════════════════════════════════════════════
 
-# espeak-ng
-set(USE_ASYNC OFF CACHE BOOL "" FORCE)
-set(USE_MBROLA OFF CACHE BOOL "" FORCE)
-set(USE_LIBPCAUDIO OFF CACHE BOOL "" FORCE)
-set(USE_KLATT OFF CACHE BOOL "" FORCE)
-set(USE_SPEECHPLAYER OFF CACHE BOOL "" FORCE)
-set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(SHERPA_ONNX_ENABLE_TESTS     OFF CACHE BOOL "" FORCE)
+set(SHERPA_ONNX_ENABLE_PYTHON    OFF CACHE BOOL "" FORCE)
+set(SHERPA_ONNX_ENABLE_CHECK     OFF CACHE BOOL "" FORCE)
+set(SHERPA_ONNX_ENABLE_PORTAUDIO OFF CACHE BOOL "" FORCE)
+set(SHERPA_ONNX_ENABLE_JNI       OFF CACHE BOOL "" FORCE)
+set(SHERPA_ONNX_ENABLE_C_API     ON  CACHE BOOL "" FORCE)
+set(SHERPA_ONNX_ENABLE_BINARY    OFF CACHE BOOL "" FORCE)
+set(SHERPA_ONNX_ENABLE_TTS       ON  CACHE BOOL "" FORCE)
 
-if(EXISTS ${ESPEAK_DIR}/CMakeLists.txt)
-    add_subdirectory(${ESPEAK_DIR} espeak-build EXCLUDE_FROM_ALL)
-endif()
-
-# Find ONNX Runtime
-if(APPLE)
-    # macOS
-    find_library(ONNX_RUNTIME_LIB onnxruntime
-        HINTS ${ONNX_DIR}/lib /usr/local/lib /opt/homebrew/lib
-    )
-elseif(WIN32)
-    # Windows
-    find_library(ONNX_RUNTIME_LIB onnxruntime
-        HINTS ${ONNX_DIR}/lib ${ONNX_DIR}/bin
-    )
+if(EXISTS ${SHERPA_ONNX_DIR}/CMakeLists.txt)
+    add_subdirectory(${SHERPA_ONNX_DIR} sherpa-onnx-build EXCLUDE_FROM_ALL)
+    set(SHERPA_ONNX_FOUND TRUE)
 else()
-    # Linux
-    find_library(ONNX_RUNTIME_LIB onnxruntime
-        HINTS ${ONNX_DIR}/lib /usr/lib /usr/local/lib
-    )
-endif()
-
-# Piper library
-if(EXISTS ${PIPER_DIR}/src/cpp/piper.cpp)
-    add_library(piper STATIC
-        ${PIPER_DIR}/src/cpp/piper.cpp
-        ${PIPER_DIR}/src/cpp/phonemize.cpp
-        ${PIPER_DIR}/src/cpp/phoneme_ids.cpp
-    )
-    target_include_directories(piper PRIVATE
-        ${PIPER_DIR}/src/cpp
-        ${ONNX_DIR}/include
-        ${ESPEAK_DIR}/src/include
-    )
-    if(TARGET espeak-ng)
-        target_link_libraries(piper espeak-ng)
-    endif()
-    if(ONNX_RUNTIME_LIB)
-        target_link_libraries(piper ${ONNX_RUNTIME_LIB})
-    endif()
+    message(WARNING "sherpa-onnx not found at ${SHERPA_ONNX_DIR}. TTS and neural VAD will be unavailable.")
+    set(SHERPA_ONNX_FOUND FALSE)
 endif()
 
 # ═══════════════════════════════════════════════════════════════
@@ -118,20 +83,13 @@ target_include_directories(speech_jni PRIVATE
     ${WHISPER_DIR}
 )
 
-if(EXISTS ${PIPER_DIR}/src/cpp)
-    target_include_directories(speech_jni PRIVATE
-        ${PIPER_DIR}/src/cpp
-        ${ONNX_DIR}/include
-        ${ESPEAK_DIR}/src/include
-    )
+if(SHERPA_ONNX_FOUND)
+    target_include_directories(speech_jni PRIVATE ${SHERPA_ONNX_DIR})
+    target_compile_definitions(speech_jni PRIVATE HAVE_SHERPA_ONNX=1)
+    target_link_libraries(speech_jni sherpa-onnx-c-api)
 endif()
 
-# Link dependencies
 target_link_libraries(speech_jni whisper)
-
-if(TARGET piper)
-    target_link_libraries(speech_jni piper)
-endif()
 
 # Platform-specific linking
 if(APPLE)
