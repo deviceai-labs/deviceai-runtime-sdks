@@ -63,10 +63,11 @@ object DeviceAI {
     ) {
         val builder = CloudConfig.Builder(apiKey).apply(block)
         val config = builder.build()
-        cloudConfig = config
 
-        // Configure runtime logging based on environment
+        // Configure runtime first — throws IllegalStateException on double-init.
+        // Only update cloudConfig after configure() succeeds so state stays consistent.
         DeviceAIRuntime.configure(config.environment)
+        cloudConfig = config
 
         CoreSDKLogger.info("DeviceAI", buildString {
             append("Initialized — env=${config.environment}")

@@ -124,9 +124,14 @@ class ChatSession internal constructor(
         }
 
         val genConfig = (overrideConfig ?: config).toGenConfig()
-        val result = LlmCppBridge.generate(messages, genConfig)
-        _history.add(LlmMessage(LlmRole.ASSISTANT, result.text))
-        return result.text
+        return try {
+            val result = LlmCppBridge.generate(messages, genConfig)
+            _history.add(LlmMessage(LlmRole.ASSISTANT, result.text))
+            result.text
+        } catch (e: Exception) {
+            _history.removeLastOrNull() // roll back user message for clean retry
+            throw e
+        }
     }
 
     /** Abort any in-progress [send] or [sendBlocking] call. */

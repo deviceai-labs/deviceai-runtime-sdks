@@ -34,6 +34,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,12 +44,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import dev.deviceai.llm.models.LlmCatalog
+import dev.deviceai.models.ModelRegistry
 
 @Composable
 fun LlmTabContent(viewModel: LlmViewModel, padding: PaddingValues) {
     val state by viewModel.state.collectAsState()
     val messages by viewModel.messages.collectAsState()
     val isGenerating by viewModel.isGenerating.collectAsState()
+
+    // Auto-load a previously downloaded model when the tab becomes active.
+    LaunchedEffect(Unit) {
+        val local = ModelRegistry.getLocalModel(LlmCatalog.SMOLLM2_360M_INSTRUCT_Q4.id)
+        viewModel.initialize(local?.modelPath)
+    }
 
     Box(
         modifier = Modifier

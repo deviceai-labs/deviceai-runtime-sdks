@@ -9,7 +9,7 @@ package dev.deviceai.llm
  *     systemPrompt  = "You are a helpful assistant."
  *     temperature   = 0.8f
  *     maxTokens     = 512
- *     gpuLayers     = 99    // 0 = CPU only, 99 = all layers on GPU
+ *     useGpu        = true  // false = CPU only
  * }
  * ```
  *
@@ -72,18 +72,17 @@ class ChatConfig {
     var threads: Int = 4
 
     /**
-     * Number of model layers to offload to the GPU.
-     * `0` = CPU-only. `99` = all layers on GPU (recommended when available).
-     * Default: 99.
+     * Whether to use GPU acceleration — Metal on iOS, Vulkan on Android.
+     * Default: true.
      */
-    var gpuLayers: Int = 99
+    var useGpu: Boolean = true
 
     // ── Internal helpers ──────────────────────────────────────────────────────
 
     internal fun toInitConfig() = LlmInitConfig(
         contextSize = contextSize,
         maxThreads  = threads,
-        useGpu      = gpuLayers > 0,
+        useGpu      = useGpu,
     )
 
     internal fun toGenConfig() = LlmGenConfig(
