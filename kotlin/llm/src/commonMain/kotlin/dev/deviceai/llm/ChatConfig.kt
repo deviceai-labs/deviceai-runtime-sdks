@@ -83,7 +83,7 @@ class ChatConfig {
     internal fun toInitConfig() = LlmInitConfig(
         contextSize = contextSize,
         maxThreads  = threads,
-        nGpuLayers  = gpuLayers,
+        useGpu      = gpuLayers > 0,
     )
 
     internal fun toGenConfig() = LlmGenConfig(
