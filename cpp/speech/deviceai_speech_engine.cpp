@@ -140,6 +140,7 @@ static bool read_wav_file(
     }
 
     uint16_t num_channels = 1;
+    bool     fmt_seen     = false;
 
     while (file.good()) {
         char     chunk_id[4];
@@ -171,8 +172,14 @@ static bool read_wav_file(
                 STT_LOGE("Invalid channel count %u: %s", num_channels, path.c_str());
                 return false;
             }
+            fmt_seen = true;
 
         } else if (std::strncmp(chunk_id, "data", 4) == 0) {
+            if (!fmt_seen || sample_rate <= 0) {
+                STT_LOGE("data chunk before fmt or invalid sample_rate=%d: %s",
+                         sample_rate, path.c_str());
+                return false;
+            }
             std::vector<int16_t> pcm(chunk_size / 2);
             file.read(reinterpret_cast<char *>(pcm.data()), chunk_size);
 
@@ -245,6 +252,10 @@ static void resample_to_16k(
     int                       input_rate,
     std::vector<float>       &output
 ) {
+    if (input.empty() || input_rate <= 0) {
+        output.clear();
+        return;
+    }
     if (input_rate == WHISPER_SAMPLE_RATE) {
         output = input;
         return;
@@ -688,7 +699,9 @@ void dai_stt_transcribe_stream(
     );
 
     bool cancelled = g_stt_cancel.load();
-    int64_t duration_ms = static_cast<int64_t>(n_samples) * 1000 / WHISPER_SAMPLE_RATE;
+    // audio.size() is post-VAD (run_transcription trims in-place) — consistent
+    // with dai_stt_transcribe_file_detailed which also uses post-VAD sample count.
+    int64_t duration_ms = static_cast<int64_t>(audio.size()) * 1000 / WHISPER_SAMPLE_RATE;
     std::string json = cancelled ? "" : build_result_json(text, segs, g_stt_language, duration_ms);
 
     // Release mutex before invoking external callbacks.
@@ -820,6 +833,7 @@ int16_t *dai_tts_synthesize(const char *text, int *out_length) {
 }
 
 int dai_tts_synthesize_to_file(const char *text, const char *output_path) {
+    if (!text || !text[0] || !output_path || !output_path[0]) return 0;
     std::lock_guard<std::mutex> lock(g_tts_mutex);
     if (!g_tts) { TTS_LOGE("Not initialized"); return 0; }
 
@@ -879,7 +893,16 @@ void dai_tts_synthesize_stream(
     dai_tts_error_cb     on_error,
     void                *user_data
 ) {
-    std::lock_guard<std::mutex> lock(g_tts_mutex);
+    if (!text || !text[0]) {
+        if (on_error) on_error("Invalid text input", user_data);
+        return;
+    }
+
+    // unique_lock so we can release before firing on_complete — same pattern
+    // as STT stream. on_chunk fires from tts_stream_callback under the lock
+    // (structural — sherpa holds the call stack); on_chunk must not re-enter
+    // TTS APIs. on_complete is fired after unlock, safe for re-entry.
+    std::unique_lock<std::mutex> lock(g_tts_mutex);
     if (!g_tts) {
         if (on_error) on_error("TTS not initialized", user_data);
         return;
@@ -893,7 +916,10 @@ void dai_tts_synthesize_stream(
         g_tts, text, g_tts_speaker_id.load(), 1.0f,
         tts_stream_callback, &state);
 
-    if (!g_tts_cancel.load()) {
+    bool cancelled = g_tts_cancel.load();
+    lock.unlock();
+
+    if (!cancelled) {
         if (on_complete) on_complete(user_data);
     }
 }
@@ -919,7 +945,7 @@ int dai_tts_init(const char *, const char *, const char *, const char *,
     return 0;
 }
 int16_t *dai_tts_synthesize(const char *, int *out_length) {
-    *out_length = 0; return nullptr;
+    if (out_length) *out_length = 0; return nullptr;
 }
 int dai_tts_synthesize_to_file(const char *, const char *) { return 0; }
 void dai_tts_synthesize_stream(const char *, dai_tts_chunk_cb, dai_tts_complete_cb,
