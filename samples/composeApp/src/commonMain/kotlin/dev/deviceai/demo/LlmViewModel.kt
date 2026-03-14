@@ -3,6 +3,7 @@ package dev.deviceai.demo
 import dev.deviceai.core.DeviceAI
 import dev.deviceai.llm.ChatSession
 import dev.deviceai.llm.llm
+import dev.deviceai.models.currentTimeMillis
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -97,7 +98,7 @@ class LlmViewModel {
         val activeSession = session ?: return
         if (_isGenerating.value || text.isBlank()) return
 
-        val nowMs = currentTimeMs()
+        val nowMs = currentTimeMillis()
         val userMsg = ChatMessage(
             role = Role.USER, text = text,
             id = nextMessageId(), timestampMs = nowMs
@@ -111,14 +112,14 @@ class LlmViewModel {
         _tokensPerSec.value = 0f
         _latencyMs.value = 0L
 
-        val genStartMs = currentTimeMs()
+        val genStartMs = currentTimeMillis()
         var tokenCount = 0
         var firstTokenMs = -1L
 
         activeSession.send(text)
             .onEach { token ->
                 tokenCount++
-                val elapsedMs = currentTimeMs() - genStartMs
+                val elapsedMs = currentTimeMillis() - genStartMs
 
                 if (firstTokenMs < 0L) {
                     firstTokenMs = elapsedMs
