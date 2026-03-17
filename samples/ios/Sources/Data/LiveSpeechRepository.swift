@@ -1,4 +1,5 @@
 import AVFoundation
+import DeviceAiCore
 import DeviceAiStt
 
 // MARK: - Concrete implementation

@@ -19,46 +19,12 @@ enum AppTheme {
     )
 }
 
-// MARK: - Liquid Glass progressive enhancement
+// MARK: - Liquid Glass progressive enhancement (Xcode 26+ only)
+// These are no-ops until the project is built with Xcode 26 + iOS 26 SDK.
 
 extension View {
-    /// Applies Liquid Glass card effect on iOS 26+; no-op on iOS 17-25.
-    @ViewBuilder
-    func liquidGlassCardIfAvailable() -> some View {
-        if #available(iOS 26, *) {
-            self.glassBackgroundEffect()
-        } else {
-            self
-        }
-    }
-
-    /// Applies Liquid Glass badge effect on iOS 26+.
-    @ViewBuilder
-    func liquidGlassBadgeIfAvailable() -> some View {
-        if #available(iOS 26, *) {
-            self.glassBackgroundEffect(in: Circle())
-        } else {
-            self
-        }
-    }
-
-    /// Applies Liquid Glass to a button on iOS 26+.
-    @ViewBuilder
-    func liquidGlassIfAvailable() -> some View {
-        if #available(iOS 26, *) {
-            self.glassBackgroundEffect()
-        } else {
-            self
-        }
-    }
-
-    /// Liquid Glass chat bubble on iOS 26+ (assistant only).
-    @ViewBuilder
-    func liquidGlassBubbleIfAvailable(isUser: Bool) -> some View {
-        if #available(iOS 26, *), !isUser {
-            self.glassBackgroundEffect(in: RoundedRectangle(cornerRadius: 18))
-        } else {
-            self
-        }
-    }
+    @ViewBuilder func liquidGlassCardIfAvailable() -> some View { self }
+    @ViewBuilder func liquidGlassBadgeIfAvailable() -> some View { self }
+    @ViewBuilder func liquidGlassIfAvailable() -> some View { self }
+    @ViewBuilder func liquidGlassBubbleIfAvailable(isUser: Bool) -> some View { self }
 }

@@ -9,7 +9,7 @@ final class AppContainer {
     let modelsVM: ModelsViewModel
 
     init() {
-        DeviceAI.configure { $0.environment = .staging(apiKey: "demo") }
+        DeviceAI.configure()
         speechVM = SpeechViewModel(speech: LiveSpeechRepository())
         chatVM   = ChatViewModel(chat: LiveChatRepository())
         modelsVM = ModelsViewModel(models: LiveModelRepository())

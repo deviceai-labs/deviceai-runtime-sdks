@@ -1,3 +1,4 @@
+import DeviceAiCore
 import DeviceAiLlm
 
 // MARK: - Concrete implementation
