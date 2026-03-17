@@ -1,0 +1,17 @@
+#!/bin/sh
+# Git post-merge hook — regenerates the iOS Xcode project after git pull / git merge.
+#
+# Installed by: make hooks  (from repo root)
+# Triggers on:  git pull, git merge
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+IOS_DIR="$REPO_ROOT/samples/ios"
+PROJECT_YML="$IOS_DIR/project.yml"
+
+# Only regenerate if project.yml itself was touched in this merge.
+CHANGED=$(git diff-tree -r --name-only --no-commit-id ORIG_HEAD HEAD 2>/dev/null)
+
+if echo "$CHANGED" | grep -q "samples/ios/"; then
+    echo "⚙️  iOS sources changed — regenerating Xcode project..."
+    cd "$IOS_DIR" && xcodegen generate --quiet
+fi

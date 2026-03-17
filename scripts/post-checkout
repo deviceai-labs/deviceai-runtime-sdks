@@ -1,0 +1,14 @@
+#!/bin/sh
+# Git post-checkout hook — regenerates the iOS Xcode project when you switch branches.
+#
+# Installed by: make hooks  (from repo root)
+# Triggers on:  git checkout, git switch
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+IOS_DIR="$REPO_ROOT/samples/ios"
+PROJECT_YML="$IOS_DIR/project.yml"
+
+if [ -f "$PROJECT_YML" ]; then
+    echo "⚙️  Regenerating samples/ios Xcode project..."
+    cd "$IOS_DIR" && xcodegen generate --quiet
+fi
