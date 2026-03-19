@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import DeviceAiCore
 
 @Observable
@@ -9,7 +10,12 @@ final class AppContainer {
     let modelsVM: ModelsViewModel
 
     init() {
-        DeviceAI.configure()
+        // Set window background so status bar + home indicator areas match theme
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .forEach { $0.backgroundColor = .black }
+
         speechVM = SpeechViewModel(speech: LiveSpeechRepository())
         chatVM   = ChatViewModel(chat: LiveChatRepository())
         modelsVM = ModelsViewModel(models: LiveModelRepository())

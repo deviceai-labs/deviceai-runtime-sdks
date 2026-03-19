@@ -1,26 +1,36 @@
 import SwiftUI
 
-/// Design tokens for DeviceAI Labs sample app.
-/// Mirrors the dark purple + cobalt palette from the KMP Compose theme.
+/// Design tokens matching the DeviceAI brand — black + amber.
 enum AppTheme {
-    /// Primary accent — cobalt blue, matches deviceai.dev brand.
-    static let accent = Color(red: 0, green: 0.384, blue: 1)         // #0062FF
+    /// Amber orange — primary accent
+    static let accent = Color(red: 0.984, green: 0.659, blue: 0.118)     // #FBAA1E
 
-    /// Deep space background — top of gradient.
-    static let backgroundTop = Color(red: 0.039, green: 0.067, blue: 0.125)  // #0A1120
+    /// Pure black background
+    static let background = Color.black
 
-    /// Navy surface — bottom of gradient.
-    static let backgroundBottom = Color(red: 0.086, green: 0.122, blue: 0.188) // #161F30
+    /// Dark surface — cards, tab bar, nav bar
+    static let surface = Color(red: 0.110, green: 0.110, blue: 0.118)    // #1C1C1E
+
+    /// Surface variant — slightly lighter, for input fields etc.
+    static let surfaceVariant = Color(red: 0.173, green: 0.173, blue: 0.180) // #2C2C2E
+
+    /// Primary text on dark background
+    static let onBackground = Color.white
+
+    /// Secondary / muted text
+    static let onBackgroundSecondary = Color(white: 0.6)
+
+    /// Error red
+    static let error = Color(red: 1, green: 0.27, blue: 0.227)           // #FF4539
 
     static let backgroundGradient = LinearGradient(
-        colors: [backgroundTop, backgroundBottom],
+        colors: [background, surface],
         startPoint: .top,
         endPoint: .bottom
     )
 }
 
 // MARK: - Liquid Glass progressive enhancement (Xcode 26+ only)
-// These are no-ops until the project is built with Xcode 26 + iOS 26 SDK.
 
 extension View {
     @ViewBuilder func liquidGlassCardIfAvailable() -> some View { self }

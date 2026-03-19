@@ -92,7 +92,6 @@ public enum DeviceAI {
 
 /// Deployment environment for the SDK.
 ///
-/// Mirrors `Environment` + `apiKey` in kotlin/core — identical semantics.
 public enum DeviceAiEnvironment: Equatable, Sendable {
     /// Local development. No API key required. Cloud calls disabled.
     case development

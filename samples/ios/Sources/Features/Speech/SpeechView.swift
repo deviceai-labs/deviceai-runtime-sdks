@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SpeechView: View {
     @Bindable var viewModel: SpeechViewModel
+    var onClear: () -> Void = {}
 
     var body: some View {
         Group {
@@ -9,15 +10,6 @@ struct SpeechView: View {
                 noModelView
             } else {
                 mainContent
-            }
-        }
-        .background(AppTheme.backgroundGradient.ignoresSafeArea())
-        .navigationTitle("Transcribe")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Clear") { viewModel.clearTapped() }
-                    .disabled(viewModel.transcript.isEmpty && viewModel.errorMessage == nil)
             }
         }
     }

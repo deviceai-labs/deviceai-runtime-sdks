@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ChatView: View {
     @Bindable var viewModel: ChatViewModel
+    var onClear: () -> Void = {}
 
     var body: some View {
         Group {
@@ -9,15 +10,6 @@ struct ChatView: View {
                 noModelView
             } else {
                 mainContent
-            }
-        }
-        .background(AppTheme.backgroundGradient.ignoresSafeArea())
-        .navigationTitle("Chat")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Clear") { viewModel.clearTapped() }
-                    .disabled(viewModel.messages.isEmpty && !viewModel.isGenerating)
             }
         }
     }

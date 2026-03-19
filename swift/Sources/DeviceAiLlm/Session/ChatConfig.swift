@@ -43,8 +43,10 @@ public final class ChatConfig: @unchecked Sendable {
 
     // ── Engine (init-time) ────────────────────────────────────────────────────
 
-    /// KV-cache context window in tokens. Larger = more history, more RAM.
-    public var contextSize: Int = 4096
+    /// KV-cache context window in tokens.
+    /// 0 = auto (reads n_ctx_train from the model's GGUF metadata — recommended).
+    /// Set explicitly only to cap RAM usage below the model's native context.
+    public var contextSize: Int = 0
 
     /// CPU threads for inference.
     public var threads: Int     = 4

@@ -61,7 +61,7 @@ let package = Package(
         // Binary dep: add "CLlama" after running scripts/build-xcframeworks.sh
         .target(
             name: "DeviceAiLlm",
-            dependencies: ["DeviceAiCore"],
+            dependencies: ["DeviceAiCore", "CLlama"],
             path: "Sources/DeviceAiLlm",
             swiftSettings: strictConcurrency
         ),
@@ -71,7 +71,7 @@ let package = Package(
         // Binary dep: add "CWhisper" after running scripts/build-xcframeworks.sh
         .target(
             name: "DeviceAiStt",
-            dependencies: ["DeviceAiCore"],
+            dependencies: ["DeviceAiCore", "CWhisper"],
             path: "Sources/DeviceAiStt",
             swiftSettings: strictConcurrency
         ),
@@ -86,9 +86,9 @@ let package = Package(
             swiftSettings: strictConcurrency
         ),
 
-        // ── XCFramework binary targets (uncomment after build) ────────────────
-        // .binaryTarget(name: "CLlama",      path: "Binaries/CLlama.xcframework"),
-        // .binaryTarget(name: "CWhisper",    path: "Binaries/CWhisper.xcframework"),
+        // ── XCFramework binary targets ────────────────────────────────────────
+        .binaryTarget(name: "CLlama",      path: "Binaries/CLlama.xcframework"),
+        .binaryTarget(name: "CWhisper",    path: "Binaries/CWhisper.xcframework"),
         // .binaryTarget(name: "CSherpaOnnx", path: "Binaries/CSherpaOnnx.xcframework"),
 
         // ── Tests ─────────────────────────────────────────────────────────────

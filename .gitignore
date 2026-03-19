@@ -60,3 +60,7 @@ piper/
 # Internal docs / scratch files at repo root
 whisper_coreml_runtime_explained.md
 whisper_coreml_runtime_explained.pdf
+
+# XCFramework build artifacts
+.build-xcframeworks/
+swift/Binaries/*.xcframework

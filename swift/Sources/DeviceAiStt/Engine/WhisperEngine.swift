@@ -1,62 +1,31 @@
 import Foundation
 import DeviceAiCore
-
-// ── CWhisper interop ──────────────────────────────────────────────────────────
-// When CWhisper.xcframework is linked, uncomment the import below.
-// The framework exposes the whisper.cpp C API — same header we already use
-// in the Kotlin/JNI bridge (whisper_jni.cpp / whisper.h).
-//
-// import CWhisper
-//
-// Stub mode is used while the binary is not yet built.  All methods succeed
-// immediately with empty / minimal results so the rest of the SDK compiles
-// and unit tests run on CI without requiring the binary.
-// ─────────────────────────────────────────────────────────────────────────────
+import CWhisper
 
 /// Internal Whisper inference driver.
-///
-/// `WhisperEngine` is not thread-safe by itself — all calls must be
-/// serialized by the owning `SttSession` actor.
-///
-/// ## Concurrency model
-/// Heavy C++ work is dispatched to a private serial `DispatchQueue` via
-/// `withCheckedThrowingContinuation`, keeping the actor queue free.
-///
-/// ## ABI version check (CWhisper)
-/// When you link the real binary, add:
-/// ```swift
-/// let binaryMin = SDKVersion(whisper_abi_version())   // hypothetical C export
-/// guard binaryMin >= SDKVersion.core else {
-///     throw DeviceAiError.versionMismatch(
-///         "CWhisper \(binaryMin) < core \(SDKVersion.core)")
-/// }
-/// ```
+/// All calls must be serialized by the owning `SttSession` actor.
 final class WhisperEngine: Transcribing, @unchecked Sendable {
 
-    private let queue = DispatchQueue(
-        label: "dev.deviceai.stt.whisper",
-        qos: .userInitiated
-    )
-    // Stub mode: start as loaded (no real binary to load).
-    // When CWhisper is linked: change to false and gate on load() completing.
-    private var modelLoaded = true
+    private let queue = DispatchQueue(label: "dev.deviceai.stt.whisper", qos: .userInitiated)
+    private var ctx: OpaquePointer?
     private var isCancelled = false
     private var isClosed    = false
 
     // MARK: - Lifecycle
 
     func load(modelPath: String) async throws {
+        guard !isClosed else { throw DeviceAiError.sessionClosed }
+        guard FileManager.default.fileExists(atPath: modelPath) else {
+            throw DeviceAiError.modelNotFound(path: modelPath)
+        }
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             queue.async {
-                // ── STUB ──
-                // Replace with:
-                //   guard let ctx = whisper_init_from_file(modelPath) else {
-                //       cont.resume(throwing: DeviceAiError.modelLoadFailed("whisper_init_from_file returned nil"))
-                //       return
-                //   }
-                //   self.ctx = ctx
-                DeviceAiLogger.info("WhisperEngine", "load(modelPath:) stub — model not actually loaded")
-                self.modelLoaded = true
+                guard let c = whisper_init_from_file(modelPath) else {
+                    cont.resume(throwing: DeviceAiError.modelLoadFailed(reason: "whisper_init_from_file returned nil"))
+                    return
+                }
+                self.ctx = c
+                DeviceAiLogger.info("WhisperEngine", "Model loaded: \(modelPath)")
                 cont.resume()
             }
         }
@@ -65,97 +34,84 @@ final class WhisperEngine: Transcribing, @unchecked Sendable {
     func close() async {
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             queue.async {
-                // ── STUB ──
-                // Replace with: if let ctx = self.ctx { whisper_free(ctx); self.ctx = nil }
-                self.modelLoaded = false
-                self.isClosed    = true
+                if let c = self.ctx { whisper_free(c); self.ctx = nil }
+                self.isClosed = true
                 cont.resume()
             }
         }
     }
 
-    func cancel() {
-        isCancelled = true
-        // ── STUB ──
-        // Replace with: whisper_abort(ctx)  (whisper.cpp cancel support)
-    }
-
-    // MARK: - Transcription (file path)
-
-    func transcribe(
-        audioPath: String,
-        config: TranscriptionConfig
-    ) async throws -> TranscriptionResult {
-        try await withCheckedThrowingContinuation { cont in
-            queue.async {
-                self.isCancelled = false
-                guard self.modelLoaded else {
-                    cont.resume(throwing: DeviceAiError.modelLoadFailed(reason: "Whisper model not loaded"))
-                    return
-                }
-                // ── STUB ──
-                // Replace with full whisper_full() invocation using audioPath.
-                // 1. Load PCM samples from WAV via AudioFile / AVAudioFile
-                // 2. Build whisper_full_params from TranscriptionConfig
-                // 3. Call whisper_full(ctx, params, samples, n_samples)
-                // 4. Iterate whisper_full_n_segments, whisper_full_get_segment_text
-                // 5. Return populated TranscriptionResult
-                DeviceAiLogger.info("WhisperEngine", "transcribe(audioPath:) stub")
-                cont.resume(returning: .empty)
-            }
-        }
-    }
+    func cancel() { isCancelled = true }
 
     // MARK: - Transcription (raw samples)
 
-    func transcribe(
-        samples: [Float],
-        config: TranscriptionConfig
-    ) async throws -> TranscriptionResult {
+    func transcribe(samples: [Float], config: TranscriptionConfig) async throws -> TranscriptionResult {
         try await withCheckedThrowingContinuation { cont in
             queue.async {
                 self.isCancelled = false
-                guard self.modelLoaded else {
-                    cont.resume(throwing: DeviceAiError.modelLoadFailed(reason: "Whisper model not loaded"))
+                guard let ctx = self.ctx else {
+                    cont.resume(throwing: DeviceAiError.notInitialised); return
+                }
+                var params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY)
+                params.language          = (config.language ?? "auto").withCString { $0 }
+                params.translate         = false
+                params.no_context        = true
+                params.single_segment    = false
+                params.print_progress    = false
+                params.print_realtime    = false
+                params.print_timestamps  = false
+
+                let rc = samples.withUnsafeBufferPointer { buf in
+                    whisper_full(ctx, params, buf.baseAddress, Int32(samples.count))
+                }
+                guard rc == 0 else {
+                    cont.resume(throwing: DeviceAiError.inferenceFailed(reason: "whisper_full rc=\(rc)"))
                     return
                 }
-                // ── STUB ──
-                // Replace with:
-                //   let params = Self.makeParams(config: config, nSamples: samples.count)
-                //   let rc = samples.withUnsafeBufferPointer { buf in
-                //       whisper_full(ctx, params, buf.baseAddress, Int32(samples.count))
-                //   }
-                //   guard rc == 0 else { throw DeviceAiError.inferenceFailed("whisper_full rc=\(rc)") }
-                //   cont.resume(returning: Self.collectResult(ctx: ctx))
-                DeviceAiLogger.info("WhisperEngine", "transcribe(samples:) stub — \(samples.count) samples")
-                cont.resume(returning: .empty)
+                cont.resume(returning: Self.collectResult(ctx: ctx))
             }
         }
     }
 
-    // MARK: - Streaming
+    func transcribe(audioPath: String, config: TranscriptionConfig) async throws -> TranscriptionResult {
+        // Load WAV → PCM via AVFoundation
+        let samples = try AVAudioPCMConverter.loadMonoPCM(from: URL(fileURLWithPath: audioPath))
+        return try await transcribe(samples: samples, config: config)
+    }
 
-    func transcribeStream(
-        samples: [Float],
-        config: TranscriptionConfig
-    ) -> AsyncThrowingStream<String, Error> {
+    // MARK: - Streaming (segment-by-segment)
+
+    func transcribeStream(samples: [Float], config: TranscriptionConfig) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             queue.async {
                 self.isCancelled = false
-                guard self.modelLoaded else {
-                    continuation.finish(throwing: DeviceAiError.modelLoadFailed(reason: "Whisper model not loaded"))
+                guard let ctx = self.ctx else {
+                    continuation.finish(throwing: DeviceAiError.notInitialised); return
+                }
+                var params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY)
+                params.language         = (config.language ?? "auto").withCString { $0 }
+                params.translate        = false
+                params.no_context       = true
+                params.print_progress   = false
+                params.print_realtime   = false
+                params.print_timestamps = false
+
+                let rc = samples.withUnsafeBufferPointer { buf in
+                    whisper_full(ctx, params, buf.baseAddress, Int32(samples.count))
+                }
+                guard rc == 0 else {
+                    continuation.finish(throwing: DeviceAiError.inferenceFailed(reason: "whisper_full rc=\(rc)"))
                     return
                 }
-                // ── STUB ──
-                // whisper.cpp processes audio in a single batch; streaming is simulated
-                // by emitting each segment as it is decoded:
-                //   for i in 0 ..< whisper_full_n_segments(ctx) {
-                //       guard !self.isCancelled else { continuation.finish(throwing: DeviceAiError.cancelled); return }
-                //       let text = String(cString: whisper_full_get_segment_text(ctx, i))
-                //       continuation.yield(text)
-                //   }
-                //   continuation.finish()
-                DeviceAiLogger.info("WhisperEngine", "transcribeStream(samples:) stub")
+                let n = whisper_full_n_segments(ctx)
+                for i in 0 ..< n {
+                    guard !self.isCancelled else {
+                        continuation.finish(throwing: DeviceAiError.cancelled); return
+                    }
+                    if let ptr = whisper_full_get_segment_text(ctx, i) {
+                        continuation.yield(String(cString: ptr))
+                    }
+                }
                 continuation.finish()
             }
         }
@@ -163,21 +119,35 @@ final class WhisperEngine: Transcribing, @unchecked Sendable {
 
     // MARK: - Helpers
 
-    // ── STUB ──
-    // Replace with: build whisper_full_params from TranscriptionConfig
-    // private static func makeParams(config: TranscriptionConfig, nSamples: Int) -> whisper_full_params { ... }
-    //
-    // Replace with: collect all segments + language + timing into TranscriptionResult
-    // private static func collectResult(ctx: OpaquePointer) -> TranscriptionResult { ... }
+    private static func collectResult(ctx: OpaquePointer) -> TranscriptionResult {
+        let n = whisper_full_n_segments(ctx)
+        var fullText = ""
+        var segments: [TranscriptionSegment] = []
+        for i in 0 ..< n {
+            let text = whisper_full_get_segment_text(ctx, i).map { String(cString: $0) } ?? ""
+            let t0   = whisper_full_get_segment_t0(ctx, i)   // centiseconds
+            let t1   = whisper_full_get_segment_t1(ctx, i)
+            fullText += text
+            segments.append(TranscriptionSegment(
+                text:    text.trimmingCharacters(in: .whitespaces),
+                startMs: t0 * 10,
+                endMs:   t1 * 10
+            ))
+        }
+        let lang = whisper_full_lang_id(ctx)
+        let langStr = lang >= 0 ? (whisper_lang_str(lang).map { String(cString: $0) } ?? "en") : "en"
+        return TranscriptionResult(
+            text:      fullText.trimmingCharacters(in: .whitespaces),
+            segments:  segments,
+            language:  langStr,
+            durationMs: segments.last?.endMs ?? 0
+        )
+    }
+
 }
 
 // MARK: - Convenience
 
 private extension TranscriptionResult {
-    static let empty = TranscriptionResult(
-        text: "",
-        segments: [],
-        language: "en",
-        durationMs: 0
-    )
+    static let empty = TranscriptionResult(text: "", segments: [], language: "en", durationMs: 0)
 }

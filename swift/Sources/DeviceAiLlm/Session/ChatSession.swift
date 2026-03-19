@@ -44,15 +44,19 @@ import DeviceAiCore
 /// `sendAsync()` replaces `sendBlocking()` — same semantics, Swift concurrency.
 public actor ChatSession {
 
-    private let config:  ChatConfig
-    private let engine:  LlamaEngine
-    private var history: [ChatTurn] = []
+    private let config:     ChatConfig
+    private let engine:     LlamaEngine
+    private let loadTask:   Task<Void, Error>
+    private var history:    [ChatTurn] = []
     private var closed = false
 
     init(modelPath: String, config: ChatConfig) {
-        self.config = config
-        self.engine = LlamaEngine()
-        Task { try? await self.engine.load(modelPath: modelPath, config: config) }
+        self.config  = config
+        self.engine  = LlamaEngine()
+        // Keep a reference so send() can await it — guarantees the model is
+        // ready before any generation attempt, regardless of timing.
+        let e = engine
+        self.loadTask = Task { try await e.load(modelPath: modelPath, config: config) }
     }
 
     // ── Read-only state ───────────────────────────────────────────────────────
@@ -76,6 +80,7 @@ public actor ChatSession {
         AsyncThrowingStream { continuation in
             Task {
                 do {
+                    try await self.loadTask.value   // wait for model to finish loading
                     try self.assertOpen()
                     let userTurn = ChatTurn(role: .user, content: text)
                     self.history.append(userTurn)
