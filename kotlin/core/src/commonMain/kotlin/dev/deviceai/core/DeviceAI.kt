@@ -73,7 +73,7 @@ object DeviceAI {
             append("Initialized — env=${config.environment}")
             if (config.environment != Environment.Development) {
                 append(", baseUrl=${config.baseUrl}")
-                append(", telemetry=${config.telemetry}")
+                append(", telemetry=${config.telemetry.name}")
             }
         })
 

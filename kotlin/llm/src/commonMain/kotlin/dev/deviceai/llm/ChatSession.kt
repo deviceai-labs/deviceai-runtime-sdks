@@ -1,7 +1,8 @@
 package dev.deviceai.llm
 
 import dev.deviceai.core.InternalDeviceAiApi
-import dev.deviceai.core.telemetry.InferenceEvent
+import dev.deviceai.core.telemetry.TelemetryEvent
+import dev.deviceai.core.telemetry.TelemetryEvent.Companion.ERR_UNKNOWN
 import dev.deviceai.core.telemetry.TelemetryReporter
 import dev.deviceai.models.currentTimeMillis
 import kotlinx.coroutines.flow.Flow
@@ -107,12 +108,14 @@ class ChatSession internal constructor(
 
         val startMs = currentTimeMillis()
         val genId = Uuid.random().toString()
-        var tokenCount = 0
+        // outputPieces: count llama.cpp piece callbacks — each callback is one decoded piece,
+        // which is the closest proxy to token count available without exposing the tokenizer.
+        var outputPieces = 0
 
         return LlmCppBridge.generateStream(messages, genConfig)
             .onEach { token ->
                 reply.append(token)
-                tokenCount++
+                outputPieces++
             }
             .onCompletion { error ->
                 if (error == null && reply.isNotEmpty()) {
@@ -121,15 +124,18 @@ class ChatSession internal constructor(
                     _history.removeLastOrNull() // roll back user message for clean retry
                 }
                 val totalMs = currentTimeMillis() - startMs
-                TelemetryReporter.record(InferenceEvent(
-                    generationId   = genId,
-                    modelId        = modelId,
-                    inputTokens    = estimateInputTokens(messages),
-                    outputTokens   = tokenCount,
-                    totalMs        = totalMs,
-                    tokensPerSecond = if (totalMs > 0) tokenCount * 1000f / totalMs else 0f,
-                    success        = error == null,
-                    timestampMs    = currentTimeMillis(),
+                TelemetryReporter.record(TelemetryEvent.LlmInference(
+                    generationId          = genId,
+                    modelId               = modelId,
+                    inputTokens           = estimateInputTokens(messages),
+                    inputTokensEstimated  = true,   // exact count needs C++ tokenizer — Phase 2
+                    outputPieces          = outputPieces,
+                    outputTokens          = null,   // exact count needs C++ bridge — Phase 2
+                    totalMs               = totalMs,
+                    tokensPerSecond       = if (totalMs > 0) outputPieces * 1000f / totalMs else 0f,
+                    success               = error == null,
+                    errorCode             = error?.toErrorCode(),
+                    timestampMs           = currentTimeMillis(),
                 ))
             }
     }
@@ -157,29 +163,35 @@ class ChatSession internal constructor(
         return try {
             val result = LlmCppBridge.generate(messages, genConfig)
             _history.add(LlmMessage(LlmRole.ASSISTANT, result.text))
-            TelemetryReporter.record(InferenceEvent(
-                generationId    = Uuid.random().toString(),
-                modelId         = modelId,
-                inputTokens     = estimateInputTokens(messages),
-                outputTokens    = result.tokenCount,
-                totalMs         = result.generationTimeMs,
-                tokensPerSecond = if (result.generationTimeMs > 0)
+            TelemetryReporter.record(TelemetryEvent.LlmInference(
+                generationId          = Uuid.random().toString(),
+                modelId               = modelId,
+                inputTokens           = estimateInputTokens(messages),
+                inputTokensEstimated  = true,
+                outputPieces          = result.tokenCount, // word-approx for blocking — no piece callbacks
+                outputTokens          = null,
+                totalMs               = result.generationTimeMs,
+                tokensPerSecond       = if (result.generationTimeMs > 0)
                     result.tokenCount * 1000f / result.generationTimeMs else 0f,
-                success         = true,
-                timestampMs     = currentTimeMillis(),
+                success               = true,
+                errorCode             = null,
+                timestampMs           = currentTimeMillis(),
             ))
             result.text
         } catch (e: Exception) {
             _history.removeLastOrNull() // roll back user message for clean retry
-            TelemetryReporter.record(InferenceEvent(
-                generationId    = Uuid.random().toString(),
-                modelId         = modelId,
-                inputTokens     = estimateInputTokens(messages),
-                outputTokens    = 0,
-                totalMs         = currentTimeMillis() - startMs,
-                tokensPerSecond = 0f,
-                success         = false,
-                timestampMs     = currentTimeMillis(),
+            TelemetryReporter.record(TelemetryEvent.LlmInference(
+                generationId          = Uuid.random().toString(),
+                modelId               = modelId,
+                inputTokens           = estimateInputTokens(messages),
+                inputTokensEstimated  = true,
+                outputPieces          = 0,
+                outputTokens          = null,
+                totalMs               = currentTimeMillis() - startMs,
+                tokensPerSecond       = 0f,
+                success               = false,
+                errorCode             = e.toErrorCode(),
+                timestampMs           = currentTimeMillis(),
             ))
             throw e
         }
@@ -199,4 +211,19 @@ class ChatSession internal constructor(
     /** Rough token count estimate — 1 token ≈ 4 chars for English text. */
     private fun estimateInputTokens(messages: List<LlmMessage>): Int =
         messages.sumOf { it.content.length } / 4
+
+    /**
+     * Maps an exception to an opaque error code bucket.
+     * Raw exception messages are never included in telemetry.
+     */
+    private fun Throwable.toErrorCode(): String {
+        val msg = message?.lowercase() ?: return ERR_UNKNOWN
+        return when {
+            "oom" in msg || "memory" in msg || "outofmemory" in msg -> TelemetryEvent.ERR_OOM
+            "decode" in msg                                          -> TelemetryEvent.ERR_DECODE_FAILED
+            "tokeniz" in msg                                         -> TelemetryEvent.ERR_TOKENIZE_FAILED
+            "cancel" in msg                                          -> TelemetryEvent.ERR_CANCELLED
+            else                                                     -> ERR_UNKNOWN
+        }
+    }
 }

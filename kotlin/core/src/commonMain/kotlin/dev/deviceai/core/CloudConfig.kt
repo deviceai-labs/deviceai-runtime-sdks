@@ -24,7 +24,9 @@ class CloudConfig private constructor(
     val environment: Environment,
     val apiKey: String?,
     val baseUrl: String,
-    val telemetry: Telemetry,
+    val telemetry: TelemetryMode,
+    val telemetrySamplingRate: Float,
+    val telemetryMaxPerMinute: Int,
     val wifiOnly: Boolean,
     val manifestSyncInterval: Duration,
     val appVersion: String?,
@@ -46,10 +48,23 @@ class CloudConfig private constructor(
         var baseUrl: String? = null
 
         /**
-         * Telemetry reporting. Defaults to [Telemetry.Disabled].
-         * Set to [Telemetry.Enabled] only after obtaining user consent (GDPR).
+         * Telemetry mode. Defaults to [TelemetryMode.OFF].
+         * Set to [TelemetryMode.MANAGED_BASIC] or higher only after obtaining user consent (GDPR).
          */
-        var telemetry: Telemetry = Telemetry.Disabled
+        var telemetry: TelemetryMode = TelemetryMode.OFF
+
+        /**
+         * Fraction of inference calls to record (0.0 = none, 1.0 = all).
+         * Reduces ingestion load for high-frequency apps. Default: 1.0.
+         */
+        var telemetrySamplingRate: Float = 1.0f
+
+        /**
+         * Maximum telemetry events buffered per minute.
+         * Events beyond this cap are silently dropped.
+         * Default: 60.
+         */
+        var telemetryMaxPerMinute: Int = 60
 
         /**
          * When `true` the SDK defers model downloads until a Wi-Fi connection
@@ -86,39 +101,51 @@ class CloudConfig private constructor(
                 Environment.Production  -> "https://api.deviceai.dev"
             }
             return CloudConfig(
-                environment           = environment,
-                apiKey                = apiKey,
-                baseUrl               = resolvedUrl,
-                telemetry             = telemetry,
-                wifiOnly              = wifiOnly,
-                manifestSyncInterval  = manifestSyncInterval,
-                appVersion            = appVersion,
-                appAttributes         = appAttributes,
+                environment              = environment,
+                apiKey                   = apiKey,
+                baseUrl                  = resolvedUrl,
+                telemetry                = telemetry,
+                telemetrySamplingRate    = telemetrySamplingRate.coerceIn(0f, 1f),
+                telemetryMaxPerMinute    = telemetryMaxPerMinute.coerceAtLeast(1),
+                wifiOnly                 = wifiOnly,
+                manifestSyncInterval     = manifestSyncInterval,
+                appVersion               = appVersion,
+                appAttributes            = appAttributes,
             )
         }
     }
 }
 
 /**
- * Controls whether the SDK sends telemetry events to the DeviceAI backend.
+ * Controls what the SDK collects and where it sends it.
  *
- * Telemetry is **disabled by default** to comply with GDPR and similar regulations.
- * Enable it only after obtaining explicit user consent.
+ * Disabled by default — enable only after obtaining explicit user consent (GDPR/CCPA).
  *
- * What is collected when enabled:
- * - Model load / unload events (duration, RAM delta)
- * - Inference events (latency, tokens/sec, finish reason)
- * - OTA download events (start, complete, failure)
- * - Manifest sync events
- *
- * What is **never** collected:
- * - Prompt or response content
+ * What is **never** collected regardless of mode:
+ * - Prompt or response text
+ * - Audio content or transcripts
  * - Any personally identifiable information
+ * - Raw exception messages (error codes only)
  */
-enum class Telemetry {
-    /** No telemetry is buffered or sent. Default. */
-    Disabled,
+enum class TelemetryMode {
+    /** No data collected or buffered. Default. */
+    OFF,
 
-    /** Telemetry is buffered on-device and flushed in batches on Wi-Fi + charging. */
-    Enabled,
+    /**
+     * Data collected and logged via [dev.deviceai.core.CoreSDKLogger] only.
+     * Never uploaded. Useful for integration debugging.
+     */
+    LOCAL,
+
+    /**
+     * Inference metrics (latency, token counts, model ID) uploaded to the DeviceAI backend.
+     * Device profile (OS, RAM) sent once per flush. No error detail.
+     */
+    MANAGED_BASIC,
+
+    /**
+     * Same as [MANAGED_BASIC] plus error codes and device profile on every flush.
+     * Requires explicit user consent — recommended only for production opt-in flows.
+     */
+    MANAGED_FULL,
 }

@@ -49,4 +49,7 @@ actual object PlatformStorage : StoragePaths, FileSystem {
 
     actual override fun writeText(path: String, content: String): Boolean =
         try { File(path).writeText(content); true } catch (_: Exception) { false }
+
+    /** Returns the app's private files directory, or null if context is not yet initialised. */
+    internal fun tryGetFilesDir(): String? = appContext?.filesDir?.absolutePath
 }
