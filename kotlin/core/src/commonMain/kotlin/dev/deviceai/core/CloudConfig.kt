@@ -10,7 +10,7 @@ import kotlin.time.Duration.Companion.hours
  * ```kotlin
  * DeviceAI.initialize(context, apiKey = "dai_live_...") {
  *     environment = Environment.Staging
- *     telemetry   = Telemetry.Enabled
+ *     telemetry   = TelemetryMode.MANAGED_BASIC   // requires API key; use LOCAL for no-upload debugging
  *     wifiOnly    = true
  *     appVersion  = BuildConfig.VERSION_NAME
  *     appAttributes = mapOf("user_tier" to "premium")

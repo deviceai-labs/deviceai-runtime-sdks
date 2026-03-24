@@ -19,7 +19,7 @@ package dev.deviceai.core
  * ```kotlin
  * DeviceAI.initialize(context, apiKey = "dai_live_...") {
  *     environment = Environment.Production
- *     telemetry   = Telemetry.Enabled
+ *     telemetry   = TelemetryMode.MANAGED_BASIC   // upload inference metrics; requires API key
  *     wifiOnly    = true
  *     appVersion  = BuildConfig.VERSION_NAME
  *     appAttributes = mapOf("user_tier" to "premium")
