@@ -21,7 +21,7 @@ actual object DeviceProfile {
             val key = "dev.deviceai.install_id"
             val defaults = NSUserDefaults.standardUserDefaults
             val uuid = defaults.stringForKey(key)
-                ?: Uuid.random().toString().also { defaults.setObject(it, key) }
+                ?: Uuid.random().toString().also { defaults.setObject(it, forKey = key) }
             fnv1a32(uuid + currentMonthKey())
         } catch (_: Exception) { "anonymous" }
     }

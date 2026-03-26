@@ -42,3 +42,22 @@ internal fun monthKeyFromMs(ms: Long): String {
 }
 
 private fun isLeapYear(y: Int) = y % 4 == 0 && (y % 100 != 0 || y % 400 == 0)
+
+// ── Float formatting ──────────────────────────────────────────────────────────
+// String.format("%.Nf", value) is JVM-only. These helpers work in commonMain.
+
+internal fun Float.fmt1dp(): String {
+    val sign = if (this < 0) "-" else ""
+    val abs  = kotlin.math.abs(this)
+    val int  = abs.toInt()
+    val frac = ((abs - int) * 10 + 0.5f).toInt().coerceIn(0, 9)
+    return "$sign$int.$frac"
+}
+
+internal fun Float.fmt2dp(): String {
+    val sign = if (this < 0) "-" else ""
+    val abs  = kotlin.math.abs(this)
+    val int  = abs.toInt()
+    val frac = ((abs - int) * 100 + 0.5f).toInt().coerceIn(0, 99)
+    return "$sign$int.${frac.toString().padStart(2, '0')}"
+}
