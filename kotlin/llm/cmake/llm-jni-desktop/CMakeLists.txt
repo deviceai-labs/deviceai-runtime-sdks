@@ -5,7 +5,7 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(LLAMA_DIR "${CMAKE_SOURCE_DIR}/../../../third_party/llama.cpp")
+set(LLAMA_DIR "${CMAKE_SOURCE_DIR}/../../../../third_party/llama.cpp")
 
 set(LLAMA_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
