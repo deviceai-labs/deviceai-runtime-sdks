@@ -1,4 +1,4 @@
-#include "llm_jni.h"
+#include "deviceai_llm_jni.h"
 #include "llama.h"
 
 #include <string>

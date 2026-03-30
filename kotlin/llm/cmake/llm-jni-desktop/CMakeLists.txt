@@ -19,7 +19,7 @@ else()
 endif()
 
 add_library(deviceai_llm_jni SHARED
-    ${CMAKE_SOURCE_DIR}/../../src/commonMain/cpp/llm_jni.cpp
+    ${CMAKE_SOURCE_DIR}/../../src/commonMain/cpp/deviceai_llm_jni.cpp
 )
 
 target_include_directories(deviceai_llm_jni PRIVATE

@@ -105,7 +105,7 @@ include_directories(${JNI_INCLUDE_DIRS})
 # ═══════════════════════════════════════════════════════════════
 
 add_library(speech_jni SHARED
-    ${JNI_CPP_DIR}/whisper_jni.cpp
+    ${JNI_CPP_DIR}/deviceai_whisper_jni.cpp
     ${JNI_CPP_DIR}/piper_jni.cpp
 )
 

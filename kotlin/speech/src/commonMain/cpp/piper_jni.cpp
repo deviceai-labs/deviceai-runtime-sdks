@@ -4,7 +4,7 @@
  * Shared between Android and Desktop (JVM) platforms.
  */
 
-#include "speech_jni.h"
+#include "deviceai_speech_jni.h"
 #include "piper.hpp"
 
 #include <string>

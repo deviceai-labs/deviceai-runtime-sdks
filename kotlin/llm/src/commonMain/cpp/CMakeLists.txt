@@ -41,7 +41,7 @@ if(ANDROID)
     find_library(log-lib log)
 endif()
 
-add_library(deviceai_llm_jni SHARED llm_jni.cpp)
+add_library(deviceai_llm_jni SHARED deviceai_llm_jni.cpp)
 
 target_include_directories(deviceai_llm_jni PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
