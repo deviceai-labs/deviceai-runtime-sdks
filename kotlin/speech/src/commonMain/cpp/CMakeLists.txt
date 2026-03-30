@@ -9,8 +9,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 #                        PATHS
 # ═══════════════════════════════════════════════════════════════
 
-set(WHISPER_DIR    "${CMAKE_SOURCE_DIR}/../../../../third_party/whisper.cpp")
-set(SHERPA_DIR     "${CMAKE_SOURCE_DIR}/../../../../third_party/sherpa-onnx")
+set(WHISPER_DIR    "${CMAKE_SOURCE_DIR}/../../../../../third_party/whisper.cpp")
+set(SHERPA_DIR     "${CMAKE_SOURCE_DIR}/../../../../../third_party/sherpa-onnx")
 
 # ═══════════════════════════════════════════════════════════════
 #                      WHISPER.CPP (STT)

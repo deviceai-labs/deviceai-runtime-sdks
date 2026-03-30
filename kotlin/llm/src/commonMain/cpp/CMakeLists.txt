@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 #                           PATHS
 # ═══════════════════════════════════════════════════════════════
 
-set(LLAMA_DIR "${CMAKE_SOURCE_DIR}/../../../../third_party/llama.cpp")
+set(LLAMA_DIR "${CMAKE_SOURCE_DIR}/../../../../../third_party/llama.cpp")
 
 # ═══════════════════════════════════════════════════════════════
 #                         llama.cpp
