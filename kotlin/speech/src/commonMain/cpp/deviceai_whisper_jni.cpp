@@ -1,10 +1,10 @@
 /**
- * whisper_jni.cpp - JNI bridge for whisper.cpp (Speech-to-Text)
+ * deviceai_whisper_jni.cpp - JNI bridge for whisper.cpp (Speech-to-Text)
  *
  * Shared between Android and Desktop (JVM) platforms.
  */
 
-#include "speech_jni.h"
+#include "deviceai_speech_jni.h"
 #include "whisper.h"
 
 #include <string>
@@ -459,15 +459,35 @@ Java_dev_deviceai_SpeechBridge_nativeTranscribeAudio(
     }
 
     // ── Whisper inference ──────────────────────────────────────────
-    // Auto-derive audio_ctx from actual sample count so the encoder's attention
-    // window matches the real audio length instead of always running over 30s.
-    // Formula: each whisper frame = 160 samples; encoder conv halves it → /320.
     struct whisper_full_params params = g_params;
-    int auto_ctx = (static_cast<int>(audio.size()) + 319) / 320;
-    params.audio_ctx = std::min(auto_ctx, 1500);
     audio_sec = (float)audio.size() / WHISPER_SAMPLE_RATE;
-    LOGI("[WHISPER-CFG] audio_ctx set to %d (%.2fs after VAD trim)",
-         params.audio_ctx, audio_sec);
+
+    // Keep full encoder context (audio_ctx=0 → whisper default 1500 frames).
+    // Dynamic audio_ctx causes decoder instability on stock whisper models —
+    // only safe with ACFT fine-tuned variants (futo-org/whisper-acft).
+    params.audio_ctx = 0;
+
+    // ── max_tokens: hard stop against repetition loops ────────────────────────
+    // Whisper's decoder generates tokens one-by-one in a loop. On short audio,
+    // after transcribing the real speech it keeps looping — "what's next?" —
+    // and repeats the same sentence until the 30s window runs out.
+    //
+    // max_tokens is a hard ceiling on how many tokens the decoder can emit per
+    // segment. Once hit, decoding stops immediately regardless of what the
+    // model wants to generate next.
+    //
+    // Formula: audio_sec * 3 + 32
+    //   - 3 tokens/sec: conservative upper bound for normal speech pace
+    //   - +32: fixed headroom for short clips, punctuation, and special tokens
+    //   - floor of 32: minimum for very short clips (<1s)
+    //
+    // Example: "This is great" (~1.5s) → max_tokens=36. Whisper needs ~5 tokens
+    // to encode those 3 words. It completes the sentence and stops at 36 — the
+    // repetition loop never gets enough budget to run.
+    params.max_tokens = std::max(32, (int)(audio_sec * 3.0f) + 32);
+
+    LOGI("[WHISPER-CFG] audio_ctx=full max_tokens=%d (%.2fs after VAD trim)",
+         params.max_tokens, audio_sec);
 
     // ── Fresh state per call ───────────────────────────────────────
     // whisper_full() writes into g_ctx's internal state and result_all buffer,

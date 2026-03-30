@@ -108,7 +108,7 @@ if(ANDROID)
     find_library(log-lib log)
 endif()
 
-set(JNI_SOURCES whisper_jni.cpp)
+set(JNI_SOURCES deviceai_whisper_jni.cpp)
 
 if(SPEECHKMP_ENABLE_TTS)
     list(APPEND JNI_SOURCES piper_jni.cpp)
