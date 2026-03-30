@@ -85,6 +85,8 @@ class ChatSession internal constructor(
      * @return [Flow] emitting token strings as they are generated.
      */
     fun send(text: String, overrideConfig: ChatConfig? = null): Flow<String> {
+        require(text.isNotBlank()) { "Message text must not be blank" }
+
         _history.add(LlmMessage(LlmRole.USER, text))
 
         val messages = buildList {
@@ -98,9 +100,14 @@ class ChatSession internal constructor(
         return LlmCppBridge.generateStream(messages, genConfig)
             .onEach { token -> reply.append(token) }
             .onCompletion { error ->
-                if (error == null && reply.isNotEmpty()) {
-                    _history.add(LlmMessage(LlmRole.ASSISTANT, reply.toString()))
-                } else if (error != null) {
+                if (error == null) {
+                    if (reply.isNotEmpty()) {
+                        _history.add(LlmMessage(LlmRole.ASSISTANT, reply.toString()))
+                    } else {
+                        // Empty completion — roll back user message to keep history consistent
+                        _history.removeLastOrNull()
+                    }
+                } else {
                     _history.removeLastOrNull() // roll back user message for clean retry
                 }
             }
@@ -116,6 +123,7 @@ class ChatSession internal constructor(
      * @return The complete assistant response.
      */
     fun sendBlocking(text: String, overrideConfig: ChatConfig? = null): String {
+        require(text.isNotBlank()) { "Message text must not be blank" }
         _history.add(LlmMessage(LlmRole.USER, text))
 
         val messages = buildList {

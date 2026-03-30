@@ -40,7 +40,7 @@ internal object LlmJniEngine : LlmEngine {
         }
         return LlmResult(
             text = text,
-            tokenCount = text.split(" ").size,
+            tokenCount = if (text.isBlank()) 0 else text.trim().split(Regex("\\s+")).size,
             promptTokenCount = 0,
             finishReason = FinishReason.STOP,
             generationTimeMs = ms

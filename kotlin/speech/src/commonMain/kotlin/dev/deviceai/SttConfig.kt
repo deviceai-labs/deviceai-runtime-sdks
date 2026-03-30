@@ -46,4 +46,10 @@ data class SttConfig(
      * Set to false for continuous transcription of a long audio stream.
      */
     val noContext: Boolean = true
-)
+) {
+    init {
+        require(language.matches(Regex("[a-z]{2,3}|auto"))) {
+            "language must be an ISO 639-1/2 code (e.g. \"en\", \"es\") or \"auto\", got: \"$language\""
+        }
+    }
+}

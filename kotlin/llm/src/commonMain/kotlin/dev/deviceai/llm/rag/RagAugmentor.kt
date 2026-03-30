@@ -22,6 +22,10 @@ internal object RagAugmentor {
         val chunks = store.retrieve(query, config.ragTopK)
         if (chunks.isEmpty()) return messages
 
+        require("{context}" in config.ragPromptTemplate) {
+            "ragPromptTemplate must contain the placeholder \"{context}\""
+        }
+
         val context  = chunks.joinToString("\n\n---\n\n") { it.text }
         val injected = config.ragPromptTemplate.replace("{context}", context)
 
