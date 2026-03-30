@@ -288,8 +288,8 @@ Java_dev_deviceai_SpeechBridge_nativeTranscribeDetailed(
     std::lock_guard<std::mutex> lock(g_mutex);
 
     // Get class references
-    jclass resultClass = env->FindClass("com/speechkmp/TranscriptionResult");
-    jclass segmentClass = env->FindClass("com/speechkmp/Segment");
+    jclass resultClass = env->FindClass("dev/deviceai/TranscriptionResult");
+    jclass segmentClass = env->FindClass("dev/deviceai/Segment");
     jclass listClass = env->FindClass("java/util/ArrayList");
 
     if (g_ctx == nullptr) {
@@ -541,7 +541,7 @@ Java_dev_deviceai_SpeechBridge_nativeTranscribeStream(
     // Get callback methods
     jclass cbClass = env->GetObjectClass(callback);
     jmethodID onPartial = env->GetMethodID(cbClass, "onPartialResult", "(Ljava/lang/String;)V");
-    jmethodID onFinal = env->GetMethodID(cbClass, "onFinalResult", "(Lcom/speechkmp/TranscriptionResult;)V");
+    jmethodID onFinal = env->GetMethodID(cbClass, "onFinalResult", "(Ldev/deviceai/TranscriptionResult;)V");
     jmethodID onError = env->GetMethodID(cbClass, "onError", "(Ljava/lang/String;)V");
 
     // Get samples
@@ -566,8 +566,8 @@ Java_dev_deviceai_SpeechBridge_nativeTranscribeStream(
     int n_segments = whisper_full_n_segments(g_ctx);
 
     // Get class references for result
-    jclass resultClass = env->FindClass("com/speechkmp/TranscriptionResult");
-    jclass segmentClass = env->FindClass("com/speechkmp/Segment");
+    jclass resultClass = env->FindClass("dev/deviceai/TranscriptionResult");
+    jclass segmentClass = env->FindClass("dev/deviceai/Segment");
     jclass listClass = env->FindClass("java/util/ArrayList");
 
     jmethodID listCtor = env->GetMethodID(listClass, "<init>", "()V");
@@ -612,6 +612,7 @@ Java_dev_deviceai_SpeechBridge_nativeTranscribeStream(
         segmentList,
         env->NewStringUTF(g_language.c_str()),
         durationMs);
+
 
     env->CallVoidMethod(callback, onFinal, result);
 }

@@ -2,10 +2,11 @@ package dev.deviceai.demo
 
 import dev.deviceai.SpeechBridge
 import dev.deviceai.SttConfig
+import dev.deviceai.SttStream
+import dev.deviceai.TranscriptionResult
 import dev.deviceai.models.DownloadProgress
 import dev.deviceai.models.ModelRegistry
 import dev.deviceai.models.WhisperSize
-import kotlin.time.TimeSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -125,15 +126,7 @@ class SpeechViewModel(private val audioRecorder: AudioRecorder) {
 
     private fun stopAndTranscribe() {
         scope.launch {
-            val clock = TimeSource.Monotonic
-            val t0 = clock.markNow()
-
             val samples = withContext(Dispatchers.IO) { audioRecorder.stopRecording() }
-            val t1 = clock.markNow()
-            val audioSec = samples.size / 16000f
-            val audioSecStr = "${(audioSec).toInt()}.${((audioSec % 1) * 10).toInt()}"
-            println("[LATENCY] stopRecording():      ${(t1 - t0).inWholeMilliseconds} ms  " +
-                    "(${samples.size} samples = ${audioSecStr}s of audio)")
 
             if (samples.isEmpty()) {
                 _recordingState.value = RecordingState.Error("No audio captured — check microphone permission.")
@@ -141,16 +134,19 @@ class SpeechViewModel(private val audioRecorder: AudioRecorder) {
             }
             _recordingState.value = RecordingState.Transcribing
 
-            val t2 = clock.markNow()
-            val text = withContext(Dispatchers.IO) {
-                SpeechBridge.transcribeAudio(samples)
+            withContext(Dispatchers.IO) {
+                SpeechBridge.transcribeStream(samples, object : SttStream {
+                    override fun onPartialResult(text: String) {}
+                    override fun onFinalResult(result: TranscriptionResult) {
+                        val incoming = result.text.trim()
+                        _recordingState.value = if (incoming.isNotBlank()) RecordingState.Result(incoming)
+                                                else RecordingState.Result("(no speech detected)")
+                    }
+                    override fun onError(message: String) {
+                        _recordingState.value = RecordingState.Error(message)
+                    }
+                })
             }
-            val t3 = clock.markNow()
-            println("[LATENCY] transcribeAudio():    ${(t3 - t2).inWholeMilliseconds} ms  " +
-                    "(Kotlin → JNI → whisper → JNI → Kotlin)")
-            println("[LATENCY] ── TOTAL Kotlin ──    ${(t3 - t0).inWholeMilliseconds} ms")
-            _recordingState.value = if (text.isNotBlank()) RecordingState.Result(text.trim())
-                                    else RecordingState.Result("(no speech detected)")
         }
     }
 
