@@ -34,6 +34,7 @@
 static const SherpaOnnxOfflineTts *g_tts = nullptr;
 static std::mutex                  g_mutex;
 static std::atomic<bool>           g_cancel_requested{false};
+static int                         g_speaker_id = 0;
 
 // Write mono 16-bit PCM WAV from float samples.
 static bool write_wav_file(const std::string &path,
@@ -127,7 +128,8 @@ bool speech_tts_init(const char *model_path, const char *tokens_path,
         return false;
     }
 
-    LOG_DEBUG("TTS initialized, sample_rate=%d", SherpaOnnxOfflineTtsSampleRate(g_tts));
+    g_speaker_id = speaker_id;
+    LOG_DEBUG("TTS initialized, sample_rate=%d, speaker_id=%d", SherpaOnnxOfflineTtsSampleRate(g_tts), g_speaker_id);
     return true;
 }
 
@@ -143,7 +145,7 @@ int16_t *speech_tts_synthesize(const char *text, int *out_length) {
     g_cancel_requested = false;
 
     const SherpaOnnxGeneratedAudio *audio =
-        SherpaOnnxOfflineTtsGenerate(g_tts, text, 0, 1.0f);
+        SherpaOnnxOfflineTtsGenerate(g_tts, text, g_speaker_id, 1.0f);
 
     if (!audio || audio->n == 0) {
         LOG_ERROR("Synthesis produced no audio");
@@ -182,7 +184,7 @@ bool speech_tts_synthesize_to_file(const char *text, const char *output_path) {
     g_cancel_requested = false;
 
     const SherpaOnnxGeneratedAudio *audio =
-        SherpaOnnxOfflineTtsGenerate(g_tts, text, 0, 1.0f);
+        SherpaOnnxOfflineTtsGenerate(g_tts, text, g_speaker_id, 1.0f);
 
     if (!audio || audio->n == 0) {
         LOG_ERROR("Synthesis produced no audio");
@@ -215,7 +217,7 @@ void speech_tts_synthesize_stream(const char *text,
     g_cancel_requested = false;
 
     const SherpaOnnxGeneratedAudio *audio =
-        SherpaOnnxOfflineTtsGenerate(g_tts, text, 0, 1.0f);
+        SherpaOnnxOfflineTtsGenerate(g_tts, text, g_speaker_id, 1.0f);
 
     if (!audio || audio->n == 0 || g_cancel_requested) {
         if (!g_cancel_requested && on_error) on_error("No audio generated", user);

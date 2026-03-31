@@ -45,6 +45,7 @@
 static const SherpaOnnxOfflineTts *g_tts = nullptr;
 static std::mutex                  g_mutex;
 static std::atomic<bool>           g_cancel_requested{false};
+static int                         g_speaker_id = 0;
 
 static std::string jstring_to_string(JNIEnv *env, jstring jstr) {
     if (jstr == nullptr) return "";
@@ -163,7 +164,8 @@ Java_dev_deviceai_SpeechBridge_nativeInitTts(
         return JNI_FALSE;
     }
 
-    LOGI("TTS initialized, sample_rate=%d", SherpaOnnxOfflineTtsSampleRate(g_tts));
+    g_speaker_id = speakerId;
+    LOGI("TTS initialized, sample_rate=%d, speaker_id=%d", SherpaOnnxOfflineTtsSampleRate(g_tts), g_speaker_id);
     return JNI_TRUE;
 }
 
@@ -185,7 +187,7 @@ Java_dev_deviceai_SpeechBridge_nativeSynthesize(
     LOGD("Synthesizing: %s", input.c_str());
 
     const SherpaOnnxGeneratedAudio *audio =
-        SherpaOnnxOfflineTtsGenerate(g_tts, input.c_str(), 0, 1.0f);
+        SherpaOnnxOfflineTtsGenerate(g_tts, input.c_str(), g_speaker_id, 1.0f);
 
     if (!audio || audio->n == 0) {
         LOGE("Synthesis produced no audio");
@@ -231,7 +233,7 @@ Java_dev_deviceai_SpeechBridge_nativeSynthesizeToFile(
     LOGD("Synthesizing to file: %s", path.c_str());
 
     const SherpaOnnxGeneratedAudio *audio =
-        SherpaOnnxOfflineTtsGenerate(g_tts, input.c_str(), 0, 1.0f);
+        SherpaOnnxOfflineTtsGenerate(g_tts, input.c_str(), g_speaker_id, 1.0f);
 
     if (!audio || audio->n == 0) {
         LOGE("Synthesis produced no audio");
@@ -280,7 +282,7 @@ Java_dev_deviceai_SpeechBridge_nativeSynthesizeStream(
     std::string input = jstring_to_string(env, text);
 
     const SherpaOnnxGeneratedAudio *audio =
-        SherpaOnnxOfflineTtsGenerate(g_tts, input.c_str(), 0, 1.0f);
+        SherpaOnnxOfflineTtsGenerate(g_tts, input.c_str(), g_speaker_id, 1.0f);
 
     if (!audio || audio->n == 0 || g_cancel_requested) {
         if (!g_cancel_requested) {
