@@ -270,49 +270,55 @@ Java_dev_deviceai_SpeechBridge_nativeSynthesizeStream(
     }
     env->DeleteLocalRef(cbClass);
 
-    std::lock_guard<std::mutex> lock(g_mutex);
+    // ── Lock: validate state, generate, copy samples, then release ──────────
+    std::vector<jshort> shorts;
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
 
-    if (!g_tts) {
-        jstring msg = env->NewStringUTF("TTS not initialized");
-        if (msg) { env->CallVoidMethod(callback, onError, msg); env->DeleteLocalRef(msg); }
-        return;
-    }
-
-    g_cancel_requested = false;
-
-    std::string input = jstring_to_string(env, text);
-
-    const SherpaOnnxGeneratedAudio *audio =
-        SherpaOnnxOfflineTtsGenerate(g_tts, input.c_str(), g_speaker_id, 1.0f);
-
-    if (!audio || audio->n == 0 || g_cancel_requested) {
-        if (!g_cancel_requested) {
-            jstring msg = env->NewStringUTF("No audio generated");
+        if (!g_tts) {
+            jstring msg = env->NewStringUTF("TTS not initialized");
             if (msg) { env->CallVoidMethod(callback, onError, msg); env->DeleteLocalRef(msg); }
+            return;
         }
-        if (audio) SherpaOnnxDestroyOfflineTtsGeneratedAudio(audio);
-        return;
+
+        g_cancel_requested = false;
+
+        std::string input = jstring_to_string(env, text);
+
+        const SherpaOnnxGeneratedAudio *audio =
+            SherpaOnnxOfflineTtsGenerate(g_tts, input.c_str(), g_speaker_id, 1.0f);
+
+        if (!audio || audio->n == 0 || g_cancel_requested) {
+            if (!g_cancel_requested) {
+                jstring msg = env->NewStringUTF("No audio generated");
+                if (msg) { env->CallVoidMethod(callback, onError, msg); env->DeleteLocalRef(msg); }
+            }
+            if (audio) SherpaOnnxDestroyOfflineTtsGeneratedAudio(audio);
+            return;
+        }
+
+        // Convert float → int16 while still under lock, before any Java call
+        shorts.resize(audio->n);
+        for (int i = 0; i < audio->n; ++i) {
+            float v = audio->samples[i];
+            if (v >  1.0f) v =  1.0f;
+            if (v < -1.0f) v = -1.0f;
+            shorts[i] = static_cast<jshort>(v * 32767.0f);
+        }
+        SherpaOnnxDestroyOfflineTtsGeneratedAudio(audio);
     }
+    // ── Lock released — safe to call into Java ───────────────────────────────
 
     // Send audio in chunks (4096 samples ≈ 170ms at 24kHz)
     const int CHUNK_SIZE = 4096;
-    for (int i = 0; i < audio->n && !g_cancel_requested; i += CHUNK_SIZE) {
-        int chunk_len = std::min(CHUNK_SIZE, audio->n - i);
+    for (int i = 0; i < (int)shorts.size() && !g_cancel_requested; i += CHUNK_SIZE) {
+        int chunk_len = std::min(CHUNK_SIZE, (int)shorts.size() - i);
 
         jshortArray chunk = env->NewShortArray(chunk_len);
-        std::vector<jshort> shorts(chunk_len);
-        for (int j = 0; j < chunk_len; ++j) {
-            float v = audio->samples[i + j];
-            if (v >  1.0f) v =  1.0f;
-            if (v < -1.0f) v = -1.0f;
-            shorts[j] = static_cast<jshort>(v * 32767.0f);
-        }
-        env->SetShortArrayRegion(chunk, 0, chunk_len, shorts.data());
+        env->SetShortArrayRegion(chunk, 0, chunk_len, shorts.data() + i);
         env->CallVoidMethod(callback, onChunk, chunk);
         env->DeleteLocalRef(chunk);
     }
-
-    SherpaOnnxDestroyOfflineTtsGeneratedAudio(audio);
 
     if (!g_cancel_requested) {
         env->CallVoidMethod(callback, onComplete);
