@@ -656,8 +656,15 @@ Java_dev_deviceai_SpeechBridge_nativeTranscribeStream(
             env->CallVoidMethod(callback, onPartial, partialStr);
             env->DeleteLocalRef(partialStr);
 
-            // If the callback threw, stop iterating
-            if (env->ExceptionCheck()) { env->ExceptionClear(); break; }
+            // If the callback threw, propagate — clean up and return with exception pending
+            if (env->ExceptionCheck()) {
+                whisper_free_state(state);
+                env->DeleteLocalRef(segmentClass);
+                env->DeleteLocalRef(listClass);
+                env->DeleteLocalRef(segmentList);
+                env->DeleteLocalRef(resultClass);
+                return;
+            }
 
             jstring segText = env->NewStringUTF(text);
             jobject segment = env->NewObject(segmentClass, segmentCtor,
