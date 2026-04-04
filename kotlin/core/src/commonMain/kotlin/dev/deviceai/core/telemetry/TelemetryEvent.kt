@@ -5,12 +5,16 @@ import kotlinx.serialization.json.*
 /**
  * A single structured telemetry event emitted by the DeviceAI SDK.
  *
- * Events are buffered on-device via [TelemetryEngine] and sent to the backend
- * in batches. Each subtype maps to a specific runtime event.
+ * Events are buffered on-device via [TelemetryEngine] and flushed according to
+ * their [priority] and the active [NetworkPolicy]:
+ * - [TelemetryPriority.Normal] — batched, any network, exponential backoff on failure
+ * - [TelemetryPriority.WifiPreferred] — deferred until Wi-Fi when checker is provided
+ * - [TelemetryPriority.Critical] — immediate, any network, bypasses batching and data-saver
  */
 sealed class TelemetryEvent {
     abstract val type: String
     abstract val timestampMs: Long
+    abstract val priority: TelemetryPriority
 
     /**
      * A model was loaded into memory. Emitted for LLM, STT, and TTS modules.
@@ -26,6 +30,7 @@ sealed class TelemetryEvent {
         val ramDeltaMb: Float? = null,
     ) : TelemetryEvent() {
         override val type: String get() = "model_load"
+        override val priority: TelemetryPriority get() = TelemetryPriority.Normal
     }
 
     /**
@@ -38,6 +43,7 @@ sealed class TelemetryEvent {
         val modelId: String,
     ) : TelemetryEvent() {
         override val type: String get() = "model_unload"
+        override val priority: TelemetryPriority get() = TelemetryPriority.Normal
     }
 
     /**
@@ -59,6 +65,7 @@ sealed class TelemetryEvent {
         val finishReason: String? = null,
     ) : TelemetryEvent() {
         override val type: String get() = "inference_complete"
+        override val priority: TelemetryPriority get() = TelemetryPriority.Normal
     }
 
     /**
@@ -76,10 +83,11 @@ sealed class TelemetryEvent {
         val errorCode: String? = null,
     ) : TelemetryEvent() {
         override val type: String get() = "ota_download"
+        override val priority: TelemetryPriority get() = TelemetryPriority.Normal
     }
 
     /**
-     * A manifest sync request completed or failed.
+     * A manifest sync completed or failed.
      * Collected at [TelemetryLevel.Full] only.
      */
     data class ManifestSync(
@@ -89,6 +97,24 @@ sealed class TelemetryEvent {
         val errorCode: String? = null,
     ) : TelemetryEvent() {
         override val type: String get() = "manifest_sync"
+        override val priority: TelemetryPriority get() = TelemetryPriority.Normal
+    }
+
+    /**
+     * A kill-switch or forced rollback was detected in the manifest.
+     *
+     * Always [TelemetryPriority.Critical] — sent immediately on any network.
+     * Collected at all [TelemetryLevel]s above [TelemetryLevel.Off].
+     */
+    data class ControlPlaneAlert(
+        override val timestampMs: Long,
+        /** "kill_switch" | "forced_rollback" | "model_revoked" */
+        val alertType: String,
+        val modelId: String? = null,
+        val rolloutId: String? = null,
+    ) : TelemetryEvent() {
+        override val type: String get() = "control_plane_alert"
+        override val priority: TelemetryPriority get() = TelemetryPriority.Critical
     }
 
     /** Converts this event to a [JsonObject] for the telemetry batch payload. */
@@ -127,6 +153,11 @@ sealed class TelemetryEvent {
                 put("success", success)
                 put("model_count", modelCount)
                 errorCode?.let { put("error_code", it) }
+            }
+            is ControlPlaneAlert -> {
+                put("alert_type", alertType)
+                modelId?.let { put("model_id", it) }
+                rolloutId?.let { put("rollout_id", it) }
             }
         }
     }

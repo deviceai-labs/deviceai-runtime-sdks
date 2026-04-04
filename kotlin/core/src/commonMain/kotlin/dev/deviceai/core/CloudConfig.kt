@@ -1,5 +1,6 @@
 package dev.deviceai.core
 
+import dev.deviceai.core.telemetry.NetworkPolicy
 import dev.deviceai.core.telemetry.TelemetryLevel
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
@@ -12,10 +13,12 @@ import kotlin.time.Duration.Companion.hours
  * DeviceAI.initialize(context, apiKey = "dai_live_...") {
  *     environment = Environment.Production
  *     telemetry   = TelemetryLevel.Minimal
- *     wifiOnly    = true
  *     appVersion  = BuildConfig.VERSION_NAME
  *     capabilityProfile = mapOf("ram_gb" to 8.0, "cpu_cores" to 8, "has_npu" to true)
- *     appAttributes = mapOf("user_tier" to "premium")
+ *     networkPolicy = NetworkPolicy(
+ *         isOnWifi    = { wifiManager.connectionInfo.networkId != -1 },
+ *         isDataSaver = { connectivityManager.isActiveNetworkMetered },
+ *     )
  * }
  * ```
  *
@@ -27,7 +30,7 @@ class CloudConfig private constructor(
     val apiKey: String?,
     val baseUrl: String,
     val telemetry: TelemetryLevel,
-    val wifiOnly: Boolean,
+    val networkPolicy: NetworkPolicy,
     val manifestSyncInterval: Duration,
     val capabilityProfile: Map<String, Any?>,
     val appVersion: String?,
@@ -40,8 +43,8 @@ class CloudConfig private constructor(
         var environment: Environment = Environment.Production
 
         /**
-         * Override the backend base URL. Leave null to use the default for the
-         * selected [environment]:
+         * Override the backend base URL. Leave null to use the default for the selected
+         * [environment]:
          * - Development → `http://localhost:8080`
          * - Staging     → `https://staging.api.deviceai.dev`
          * - Production  → `https://api.deviceai.dev`
@@ -52,40 +55,49 @@ class CloudConfig private constructor(
          * Telemetry reporting level. Defaults to [TelemetryLevel.Off].
          * Enable only after obtaining explicit user consent (GDPR/CCPA).
          *
-         * - [TelemetryLevel.Off]     — nothing sent (default)
-         * - [TelemetryLevel.Minimal] — latency + model load/unload only
+         * - [TelemetryLevel.Off]     — nothing buffered or sent (default)
+         * - [TelemetryLevel.Minimal] — model load/unload + inference latency
          * - [TelemetryLevel.Full]    — all events including OTA and manifest sync
          */
         var telemetry: TelemetryLevel = TelemetryLevel.Off
 
         /**
-         * When `true` the SDK defers model downloads and telemetry flushes until
-         * a Wi-Fi connection is available. Defaults to `true`.
+         * Controls network-aware telemetry delivery. Defaults to [NetworkPolicy.Default]
+         * (any network, no data-saver awareness). Provide [NetworkPolicy.isOnWifi] and/or
+         * [NetworkPolicy.isDataSaver] lambdas for finer-grained control:
+         *
+         * ```kotlin
+         * networkPolicy = NetworkPolicy(
+         *     isOnWifi    = { /* your connectivity check */ true },
+         *     isDataSaver = { /* your data saver check */ false },
+         * )
+         * ```
+         *
+         * See [NetworkPolicy] for per-priority delivery semantics.
          */
-        var wifiOnly: Boolean = true
+        var networkPolicy: NetworkPolicy = NetworkPolicy.Default
 
         /**
          * How often the SDK re-fetches the manifest in the background.
-         * Shorter intervals mean faster propagation of kill switches and
-         * model updates at the cost of more API calls. Defaults to 6 hours.
+         * Shorter intervals mean faster propagation of kill switches and model updates.
+         * Defaults to 6 hours.
          */
         var manifestSyncInterval: Duration = 6.hours
 
         /**
-         * Device hardware capabilities sent to the backend for capability tier scoring
-         * and model cohort targeting.
+         * Device hardware capabilities for capability tier scoring and cohort targeting.
          *
-         * Recognised keys (backend scoring):
-         * - `"ram_gb"`   — Float: total device RAM in GB (e.g. `8.0`)
-         * - `"cpu_cores"` — Int: logical CPU core count (e.g. `8`)
-         * - `"has_npu"`  — Boolean: whether a dedicated NPU/ANE is present
+         * Recognised scoring keys:
+         * - `"ram_gb"`    — Float: total device RAM in GB (e.g. `8.0`)
+         * - `"cpu_cores"` — Int:   logical CPU core count (e.g. `8`)
+         * - `"has_npu"`   — Boolean: dedicated NPU / ANE present
          *
-         * You may include additional keys — they are stored as-is for custom targeting.
+         * Additional keys are stored as-is for custom targeting.
          */
         var capabilityProfile: Map<String, Any?> = emptyMap()
 
         /**
-         * The app version string included in the capability profile.
+         * App version string included in the capability profile.
          * Typically `BuildConfig.VERSION_NAME` on Android or
          * `Bundle.main.infoDictionary["CFBundleShortVersionString"]` on iOS.
          */
@@ -113,7 +125,7 @@ class CloudConfig private constructor(
                 apiKey               = apiKey,
                 baseUrl              = resolvedUrl,
                 telemetry            = telemetry,
-                wifiOnly             = wifiOnly,
+                networkPolicy        = networkPolicy,
                 manifestSyncInterval = manifestSyncInterval,
                 capabilityProfile    = fullProfile,
                 appVersion           = appVersion,

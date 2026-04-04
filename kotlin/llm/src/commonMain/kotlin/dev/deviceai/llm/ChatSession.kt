@@ -1,5 +1,8 @@
 package dev.deviceai.llm
 
+import dev.deviceai.core.DeviceAI
+import dev.deviceai.core.telemetry.TelemetryEvent
+import dev.deviceai.models.currentTimeMillis
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
@@ -42,8 +45,18 @@ class ChatSession internal constructor(
     modelPath: String,
     private val config: ChatConfig,
 ) {
+    private val modelId: String = modelPath.substringAfterLast("/")
+    private val loadStartMs = currentTimeMillis()
+
     /** `true` if the model loaded successfully and the session is ready for inference. */
-    val isReady: Boolean = LlmCppBridge.initLlm(modelPath, config.toInitConfig())
+    val isReady: Boolean = LlmCppBridge.initLlm(modelPath, config.toInitConfig()).also { ok ->
+        if (ok) DeviceAI.recordEvent(TelemetryEvent.ModelLoad(
+            timestampMs = currentTimeMillis(),
+            module      = "llm",
+            modelId     = modelId,
+            durationMs  = currentTimeMillis() - loadStartMs,
+        ))
+    }
 
     private val _history = mutableListOf<LlmMessage>()
 
@@ -96,10 +109,21 @@ class ChatSession internal constructor(
 
         val genConfig = (overrideConfig ?: config).toGenConfig()
         val reply = StringBuilder()
+        var tokenCount = 0
+        val inferenceStartMs = currentTimeMillis()
 
         return LlmCppBridge.generateStream(messages, genConfig)
-            .onEach { token -> reply.append(token) }
+            .onEach { token -> reply.append(token); tokenCount++ }
             .onCompletion { error ->
+                val latencyMs = currentTimeMillis() - inferenceStartMs
+                DeviceAI.recordEvent(TelemetryEvent.InferenceComplete(
+                    timestampMs  = currentTimeMillis(),
+                    module       = "llm",
+                    modelId      = modelId,
+                    latencyMs    = latencyMs,
+                    tokensPerSec = if (latencyMs > 0) tokenCount * 1000f / latencyMs else null,
+                    finishReason = if (error == null) "stop" else "cancel",
+                ))
                 if (error == null) {
                     if (reply.isNotEmpty()) {
                         _history.add(LlmMessage(LlmRole.ASSISTANT, reply.toString()))
@@ -134,6 +158,15 @@ class ChatSession internal constructor(
         val genConfig = (overrideConfig ?: config).toGenConfig()
         return try {
             val result = LlmCppBridge.generate(messages, genConfig)
+            DeviceAI.recordEvent(TelemetryEvent.InferenceComplete(
+                timestampMs  = currentTimeMillis(),
+                module       = "llm",
+                modelId      = modelId,
+                latencyMs    = result.generationTimeMs,
+                tokensPerSec = if (result.generationTimeMs > 0)
+                    result.tokenCount * 1000f / result.generationTimeMs else null,
+                finishReason = result.finishReason.name.lowercase(),
+            ))
             _history.add(LlmMessage(LlmRole.ASSISTANT, result.text))
             result.text
         } catch (e: Exception) {
@@ -149,5 +182,12 @@ class ChatSession internal constructor(
     fun clearHistory() = _history.clear()
 
     /** Unload the model and release all engine resources. Do not use the session after this. */
-    fun close() = LlmCppBridge.shutdown()
+    fun close() {
+        DeviceAI.recordEvent(TelemetryEvent.ModelUnload(
+            timestampMs = currentTimeMillis(),
+            module      = "llm",
+            modelId     = modelId,
+        ))
+        LlmCppBridge.shutdown()
+    }
 }

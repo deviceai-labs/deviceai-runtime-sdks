@@ -128,7 +128,8 @@ object DeviceAI {
         // Wire up telemetry engine if enabled.
         if (config.telemetry != TelemetryLevel.Off) {
             telemetryEngine = TelemetryEngine(
-                level = config.telemetry,
+                level   = config.telemetry,
+                policy  = config.networkPolicy,
                 flushFn = { events ->
                     val session = deviceSession ?: return@TelemetryEngine
                     client.ingestTelemetry(session.token, processSessionId, events)
@@ -225,23 +226,42 @@ object DeviceAI {
     // ── Public API ────────────────────────────────────────────────────────────
 
     /**
-     * Record a telemetry event. No-op if telemetry is [TelemetryLevel.Off] or if the
-     * SDK is not in managed mode.
+     * Flush buffered telemetry events, respecting the active [NetworkPolicy].
      *
-     * Called internally by [llm] and [speech] modules — app code rarely needs this.
-     */
-    fun recordTelemetry(event: TelemetryEvent) {
-        telemetryEngine?.record(event)
-    }
-
-    /**
-     * Flush buffered telemetry events immediately.
+     * Normal events flush on any network. Wi-Fi-preferred events are held if not on Wi-Fi.
+     * Critical events are already sent immediately via [recordEvent] — this catches any
+     * stragglers and is a good call-site for Wi-Fi connect events.
      *
-     * Call this when the device connects to Wi-Fi or when the app moves to the background.
      * No-op if telemetry is [TelemetryLevel.Off].
      */
     suspend fun flushTelemetry() {
         telemetryEngine?.flush()
+    }
+
+    /**
+     * Shut down the SDK — cancels background jobs, best-effort flushes remaining telemetry
+     * (all buffers, no network gating), and releases all resources.
+     *
+     * After calling this the SDK cannot be re-initialized in the same process.
+     */
+    fun shutdown() {
+        // Close TelemetryEngine first — it does a final flush then cancels its own scope.
+        telemetryEngine?.close()
+        // Cancel the SDK-level scope (stops manifest refresh loop).
+        sdkScope.cancel()
+        backendClient?.close()
+        telemetryEngine = null
+        backendClient = null
+        deviceSession = null
+    }
+
+    /**
+     * Record a SDK telemetry event. Called by llm/speech modules — not intended for app use.
+     *
+     * No-op if telemetry is [TelemetryLevel.Off] or the SDK is in local mode.
+     */
+    fun recordEvent(event: TelemetryEvent) {
+        telemetryEngine?.record(event)
     }
 
     // ── Observability ─────────────────────────────────────────────────────────
