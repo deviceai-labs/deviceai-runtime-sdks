@@ -111,20 +111,27 @@ class ChatSession internal constructor(
 
         val genConfig = (overrideConfig ?: config).toGenConfig()
         val reply = StringBuilder()
-        var tokenCount = 0
+        var outputTokenCount = 0
         val inferenceStartMs = currentTimeMillis()
+        var ttftMs: Long? = null
 
         return LlmCppBridge.generateStream(messages, genConfig)
-            .onEach { token -> reply.append(token); tokenCount++ }
+            .onEach { token ->
+                if (ttftMs == null) ttftMs = currentTimeMillis() - inferenceStartMs
+                reply.append(token)
+                outputTokenCount++
+            }
             .onCompletion { error ->
                 val latencyMs = currentTimeMillis() - inferenceStartMs
                 DeviceAI.recordEvent(TelemetryEvent.InferenceComplete(
-                    timestampMs  = currentTimeMillis(),
-                    module       = "llm",
-                    modelId      = modelId,
-                    latencyMs    = latencyMs,
-                    tokensPerSec = if (latencyMs > 0) tokenCount * 1000f / latencyMs else null,
-                    finishReason = if (error == null) "stop" else "cancel",
+                    timestampMs       = currentTimeMillis(),
+                    module            = "llm",
+                    modelId           = modelId,
+                    latencyMs         = latencyMs,
+                    ttftMs            = ttftMs,
+                    tokensPerSec      = if (latencyMs > 0) outputTokenCount * 1000f / latencyMs else null,
+                    outputTokenCount  = outputTokenCount,
+                    finishReason      = if (error == null) "stop" else "cancel",
                 ))
                 if (error == null) {
                     if (reply.isNotEmpty()) {
@@ -161,13 +168,15 @@ class ChatSession internal constructor(
         return try {
             val result = LlmCppBridge.generate(messages, genConfig)
             DeviceAI.recordEvent(TelemetryEvent.InferenceComplete(
-                timestampMs  = currentTimeMillis(),
-                module       = "llm",
-                modelId      = modelId,
-                latencyMs    = result.generationTimeMs,
-                tokensPerSec = if (result.generationTimeMs > 0)
+                timestampMs      = currentTimeMillis(),
+                module           = "llm",
+                modelId          = modelId,
+                latencyMs        = result.generationTimeMs,
+                tokensPerSec     = if (result.generationTimeMs > 0)
                     result.tokenCount * 1000f / result.generationTimeMs else null,
-                finishReason = result.finishReason.name.lowercase(),
+                inputTokenCount  = result.promptTokenCount,
+                outputTokenCount = result.tokenCount,
+                finishReason     = result.finishReason.name.lowercase(),
             ))
             _history.add(LlmMessage(LlmRole.ASSISTANT, result.text))
             result.text

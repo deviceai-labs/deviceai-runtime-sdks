@@ -135,6 +135,8 @@ class CloudConfig private constructor(
             }
             val fullProfile = buildMap<String, Any?> {
                 putAll(capabilityProfile)
+                put("sdk_version", SDK_VERSION)
+                put("platform", sdkPlatform)
                 appVersion?.let { put("app_version", it) }
                 putAll(appAttributes)
             }
