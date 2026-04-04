@@ -54,14 +54,21 @@ sealed class TelemetryEvent {
         override val timestampMs: Long,
         val module: String,
         val modelId: String,
+        /** Total wall-clock time from request start to last token / final output. */
         val latencyMs: Long,
-        /** LLM only: generation throughput in tokens/sec. */
+        /** LLM streaming only: ms from request start to first token received. */
+        val ttftMs: Long? = null,
+        /** LLM only: generation throughput in output tokens/sec. */
         val tokensPerSec: Float? = null,
+        /** LLM only: number of prompt (input) tokens. */
+        val inputTokenCount: Int? = null,
+        /** LLM only: number of generated (output) tokens. */
+        val outputTokenCount: Int? = null,
         /** STT only: duration of audio input in ms. */
         val inputLengthMs: Int? = null,
         /** TTS only: number of characters synthesized. */
         val outputChars: Int? = null,
-        /** How the inference ended: "stop", "length", "cancel". */
+        /** How the inference ended: "stop", "max_tokens", "cancel", "error". */
         val finishReason: String? = null,
     ) : TelemetryEvent() {
         override val type: String get() = "inference_complete"
@@ -136,7 +143,10 @@ sealed class TelemetryEvent {
                 put("module", module)
                 put("model_id", modelId)
                 put("latency_ms", latencyMs)
+                ttftMs?.let { put("ttft_ms", it) }
                 tokensPerSec?.let { put("tokens_per_sec", it) }
+                inputTokenCount?.let { put("input_token_count", it) }
+                outputTokenCount?.let { put("output_token_count", it) }
                 inputLengthMs?.let { put("input_length_ms", it) }
                 outputChars?.let { put("output_chars", it) }
                 finishReason?.let { put("finish_reason", it) }
