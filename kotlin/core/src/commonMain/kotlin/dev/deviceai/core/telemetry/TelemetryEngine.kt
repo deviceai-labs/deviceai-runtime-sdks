@@ -26,7 +26,7 @@ import kotlin.math.min
 internal class TelemetryEngine(
     private val level: TelemetryLevel,
     private val policy: NetworkPolicy,
-    private val flushFn: suspend (List<TelemetryEvent>) -> Unit,
+    private val sink: TelemetrySink,
 ) {
     private val normalBuffer   = ArrayDeque<TelemetryEvent>(BUFFER_CAPACITY)
     private val wifiBuffer     = ArrayDeque<TelemetryEvent>(BUFFER_CAPACITY)
@@ -160,7 +160,7 @@ internal class TelemetryEngine(
         var attempt = 0
         while (attempt <= MAX_RETRIES) {
             try {
-                flushFn(batch)
+                sink.ingest(batch)
                 CoreSDKLogger.debug("TelemetryEngine", "[$tag] flushed ${batch.size} events")
                 return
             } catch (e: Exception) {

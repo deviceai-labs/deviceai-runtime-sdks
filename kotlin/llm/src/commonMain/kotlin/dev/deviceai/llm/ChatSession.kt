@@ -1,6 +1,7 @@
 package dev.deviceai.llm
 
 import dev.deviceai.core.DeviceAI
+import dev.deviceai.core.InternalDeviceAiApi
 import dev.deviceai.core.telemetry.TelemetryEvent
 import dev.deviceai.models.currentTimeMillis
 import kotlinx.coroutines.flow.Flow
@@ -41,6 +42,7 @@ import kotlinx.coroutines.flow.onEach
  * session.close()         // unload the model and free all resources
  * ```
  */
+@OptIn(InternalDeviceAiApi::class)
 class ChatSession internal constructor(
     modelPath: String,
     private val config: ChatConfig,

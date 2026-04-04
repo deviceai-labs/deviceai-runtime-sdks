@@ -2,6 +2,7 @@ package dev.deviceai.core
 
 import dev.deviceai.core.telemetry.NetworkPolicy
 import dev.deviceai.core.telemetry.TelemetryLevel
+import dev.deviceai.core.telemetry.TelemetrySink
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 
@@ -31,6 +32,7 @@ class CloudConfig private constructor(
     val baseUrl: String,
     val telemetry: TelemetryLevel,
     val networkPolicy: NetworkPolicy,
+    val telemetrySink: TelemetrySink?,
     val manifestSyncInterval: Duration,
     val capabilityProfile: Map<String, Any?>,
     val appVersion: String?,
@@ -60,6 +62,22 @@ class CloudConfig private constructor(
          * - [TelemetryLevel.Full]    — all events including OTA and manifest sync
          */
         var telemetry: TelemetryLevel = TelemetryLevel.Off
+
+        /**
+         * Custom telemetry sink. When set, events are routed here **instead of** the
+         * DeviceAI backend. Use this to forward SDK events to your own analytics pipeline:
+         *
+         * ```kotlin
+         * telemetrySink = object : TelemetrySink {
+         *     override suspend fun ingest(events: List<TelemetryEvent>) {
+         *         myAnalytics.track(events)
+         *     }
+         * }
+         * ```
+         *
+         * Defaults to `null` — the managed backend sink is used in managed mode.
+         */
+        var telemetrySink: TelemetrySink? = null
 
         /**
          * Controls network-aware telemetry delivery. Defaults to [NetworkPolicy.Default]
@@ -126,6 +144,7 @@ class CloudConfig private constructor(
                 baseUrl              = resolvedUrl,
                 telemetry            = telemetry,
                 networkPolicy        = networkPolicy,
+                telemetrySink        = telemetrySink,
                 manifestSyncInterval = manifestSyncInterval,
                 capabilityProfile    = fullProfile,
                 appVersion           = appVersion,

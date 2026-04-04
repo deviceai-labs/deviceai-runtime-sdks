@@ -2,6 +2,7 @@ package dev.deviceai.core
 
 import dev.deviceai.core.backend.BackendClient
 import dev.deviceai.core.backend.DeviceSession
+import dev.deviceai.core.backend.ManagedTelemetrySink
 import dev.deviceai.core.backend.SessionStore
 import dev.deviceai.core.telemetry.TelemetryEngine
 import dev.deviceai.core.telemetry.TelemetryEvent
@@ -49,7 +50,7 @@ object DeviceAI {
     internal var cloudConfig: CloudConfig? = null
         private set
 
-    // Internal components — null until initialize() runs in managed mode.
+    // Implementation details — fully internal, not part of the public API.
     internal var backendClient: BackendClient? = null
         private set
     internal var telemetryEngine: TelemetryEngine? = null
@@ -127,13 +128,16 @@ object DeviceAI {
 
         // Wire up telemetry engine if enabled.
         if (config.telemetry != TelemetryLevel.Off) {
+            val sink = config.telemetrySink
+                ?: ManagedTelemetrySink(
+                    client          = client,
+                    sessionProvider = { deviceSession },
+                    sessionId       = processSessionId,
+                )
             telemetryEngine = TelemetryEngine(
-                level   = config.telemetry,
-                policy  = config.networkPolicy,
-                flushFn = { events ->
-                    val session = deviceSession ?: return@TelemetryEngine
-                    client.ingestTelemetry(session.token, processSessionId, events)
-                }
+                level  = config.telemetry,
+                policy = config.networkPolicy,
+                sink   = sink,
             )
         }
 
@@ -256,10 +260,13 @@ object DeviceAI {
     }
 
     /**
-     * Record a SDK telemetry event. Called by llm/speech modules — not intended for app use.
+     * Record a SDK telemetry event.
      *
+     * **SDK modules only** — not intended for application code.
+     * Call this from `kotlin/llm`, `kotlin/speech`, etc. to emit inference and lifecycle events.
      * No-op if telemetry is [TelemetryLevel.Off] or the SDK is in local mode.
      */
+    @InternalDeviceAiApi
     fun recordEvent(event: TelemetryEvent) {
         telemetryEngine?.record(event)
     }
