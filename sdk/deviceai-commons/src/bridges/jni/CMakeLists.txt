@@ -72,5 +72,27 @@ if(DAI_ENABLE_LLM AND DAI_LLAMA_FOUND AND TARGET llama)
 endif()
 
 # ── deviceai_core_jni (Backend/Telemetry) ────────────────────
-# Built when DAI_ENABLE_CORE=ON and the core static lib is available.
-# Source: dai_core_jni.cpp (added when backend integration merges)
+
+if(DAI_ENABLE_CORE AND TARGET deviceai_core)
+    add_library(deviceai_core_jni SHARED dai_core_jni.cpp)
+
+    target_include_directories(deviceai_core_jni PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/src/core/include
+    )
+
+    if(NOT ANDROID)
+        target_include_directories(deviceai_core_jni PRIVATE ${JNI_INCLUDE_DIRS})
+    endif()
+
+    target_link_libraries(deviceai_core_jni PRIVATE deviceai_core)
+
+    if(ANDROID)
+        target_link_libraries(deviceai_core_jni PRIVATE ${log-lib})
+    endif()
+
+    find_package(Threads REQUIRED)
+    target_link_libraries(deviceai_core_jni PRIVATE Threads::Threads)
+
+    target_compile_options(deviceai_core_jni PRIVATE -fPIC -fvisibility=hidden $<$<CONFIG:Release>:-O2>)
+endif()

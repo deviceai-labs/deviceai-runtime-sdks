@@ -8,7 +8,7 @@ import dev.deviceai.core.telemetry.TelemetrySink
  * via [BackendClient]. Completely internal; not visible to application code.
  */
 internal class ManagedTelemetrySink(
-    private val client: BackendClient,
+    private val client: BackendClientImpl,
     private val sessionProvider: () -> DeviceSession?,
     private val sessionId: String,
 ) : TelemetrySink {
