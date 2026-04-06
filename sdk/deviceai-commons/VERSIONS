@@ -1,0 +1,12 @@
+# DeviceAI Commons — Pinned Dependency Versions
+# This is the single source of truth consumed by CMake and build scripts.
+# To update a dependency: change the version/commit here, rebuild, test.
+
+WHISPER_CPP_COMMIT=7aa8818647303b567c3a21fe4220b2681988e220
+WHISPER_CPP_VERSION=v1.8.3
+
+LLAMA_CPP_COMMIT=4720819d45e2f775b672b94ca59b278a31684b1e
+LLAMA_CPP_VERSION=b8181
+
+SHERPA_ONNX_COMMIT=6624d79b64a1640fa236f8add9eb71ae45e79f27
+SHERPA_ONNX_VERSION=1.12.34

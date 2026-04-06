@@ -52,10 +52,15 @@ CustomImpl.md
 .kotlin/
 .cxx/
 
-# Removed submodule directories (kept locally for reference, not tracked)
+# deviceai-commons: pre-built binaries + FetchContent downloads
+sdk/deviceai-commons/prebuilt/
+_deps/
+
+# Legacy submodule directories
 llama.cpp/
 espeak-ng/
 piper/
+third_party/
 
 # Internal docs / scratch files at repo root
 whisper_coreml_runtime_explained.md
