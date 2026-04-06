@@ -41,6 +41,7 @@ extensions.configure<LibraryExtension> {
 
     defaultConfig {
         minSdk = libs.versions.android.minSdk.get().toInt()
+        ndk { abiFilters += setOf("arm64-v8a", "x86_64") }
     }
 
     buildTypes {
@@ -51,6 +52,33 @@ extensions.configure<LibraryExtension> {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    packaging {
+        jniLibs { useLegacyPackaging = false }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("../../sdk/deviceai-commons/CMakeLists.txt")
+        }
+    }
+
+    defaultConfig {
+        externalNativeBuild {
+            cmake {
+                arguments(
+                    "-DCMAKE_BUILD_TYPE=Release",
+                    "-DDAI_BUILD_JNI=ON",
+                    "-DDAI_BUILD_IOS=OFF",
+                    "-DDAI_ENABLE_STT=OFF",
+                    "-DDAI_ENABLE_TTS=OFF",
+                    "-DDAI_ENABLE_LLM=OFF",
+                    "-DDAI_ENABLE_CORE=ON"
+                )
+                targets("deviceai_core_jni")
+            }
+        }
     }
 }
 

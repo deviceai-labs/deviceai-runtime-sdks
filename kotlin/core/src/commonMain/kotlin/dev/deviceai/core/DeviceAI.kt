@@ -1,9 +1,11 @@
 package dev.deviceai.core
 
 import dev.deviceai.core.backend.BackendClient
+import dev.deviceai.core.backend.BackendClientImpl
 import dev.deviceai.core.backend.DeviceSession
-import dev.deviceai.core.backend.ManagedTelemetrySink
 import dev.deviceai.core.backend.SessionStore
+import dev.deviceai.core.backend.createBackendClient
+import dev.deviceai.core.backend.createTelemetryEngine
 import dev.deviceai.core.telemetry.TelemetryEngine
 import dev.deviceai.core.telemetry.TelemetryEvent
 import dev.deviceai.core.telemetry.TelemetryLevel
@@ -123,21 +125,19 @@ object DeviceAI {
         }
 
         // ── Managed mode ──────────────────────────────────────────────────────
-        val client = BackendClient(config.baseUrl, apiKey)
+        val client = createBackendClient(config.baseUrl, apiKey)
         backendClient = client
 
         // Wire up telemetry engine if enabled.
         if (config.telemetry != TelemetryLevel.Off) {
-            val sink = config.telemetrySink
-                ?: ManagedTelemetrySink(
-                    client          = client,
-                    sessionProvider = { deviceSession },
-                    sessionId       = processSessionId,
-                )
-            telemetryEngine = TelemetryEngine(
-                level  = config.telemetry,
-                policy = config.networkPolicy,
-                sink   = sink,
+            telemetryEngine = createTelemetryEngine(
+                level           = config.telemetry,
+                policy          = config.networkPolicy,
+                baseUrl         = config.baseUrl,
+                sessionId       = processSessionId,
+                customSink      = config.telemetrySink,
+                clientForSink   = client as? BackendClientImpl,
+                sessionProvider = { deviceSession },
             )
         }
 
@@ -156,6 +156,7 @@ object DeviceAI {
             return
         }
         deviceSession = session
+        telemetryEngine?.setSession(session.token, processSessionId)
 
         CoreSDKLogger.info("DeviceAI",
             "device registered — id=${session.deviceId}, tier=${session.capabilityTier}")
@@ -201,6 +202,7 @@ object DeviceAI {
         val refreshed = client.refreshToken(session)
         if (refreshed != null) {
             SessionStore.save(refreshed)
+            telemetryEngine?.setSession(refreshed.token, processSessionId)
             CoreSDKLogger.debug("DeviceAI", "device token refreshed")
             return refreshed
         }
