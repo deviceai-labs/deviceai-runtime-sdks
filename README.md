@@ -51,9 +51,9 @@ deviceai/
 
 ```kotlin
 // build.gradle.kts
-implementation("dev.deviceai:core:0.2.0-alpha02")
-implementation("dev.deviceai:speech:0.2.0-alpha02")   // STT + TTS + VAD
-implementation("dev.deviceai:llm:0.2.0-alpha02")      // LLM inference + RAG
+implementation("dev.deviceai:core:0.3.0-alpha01")
+implementation("dev.deviceai:speech:0.3.0-alpha01")   // STT + TTS + VAD
+implementation("dev.deviceai:llm:0.3.0-alpha01")      // LLM inference + RAG
 ```
 
 No extra repository config needed — all artifacts are on Maven Central.
