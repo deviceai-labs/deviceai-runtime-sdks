@@ -19,10 +19,6 @@ kotlin {
 
     jvm()
 
-    iosX64()
-    iosArm64()
-    iosSimulatorArm64()
-
     sourceSets {
         commonMain.dependencies {
             implementation(libs.kotlin.stdlib)
@@ -40,9 +36,6 @@ kotlin {
         }
         jvmMain.dependencies {
             implementation(libs.ktor.client.okhttp)
-        }
-        iosMain.dependencies {
-            implementation(libs.ktor.client.darwin)
         }
     }
 }

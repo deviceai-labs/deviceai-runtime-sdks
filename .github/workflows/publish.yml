@@ -58,13 +58,12 @@ jobs:
         run: |
           yes | sdkmanager --install "ndk;26.3.11579264" "cmake;3.22.1"
 
-      - name: Cache Gradle + Konan
+      - name: Cache Gradle
         uses: actions/cache@v4
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-            ~/.konan
           key: gradle-macos-${{ hashFiles('**/*.gradle.kts', '**/gradle-wrapper.properties') }}
           restore-keys: gradle-macos-
 

@@ -12,9 +12,6 @@ plugins {
 group = "dev.deviceai"
 version = (System.getenv("RELEASE_VERSION") ?: "0.2.0-alpha02")
 
-// Minimum iOS version
-val minIos = "16.0"
-
 kotlin {
     // Use JVM toolchain for consistent Java version
     jvmToolchain(17)
@@ -26,21 +23,6 @@ kotlin {
 
     // JVM target for desktop
     jvm()
-
-    // iOS targets
-    iosX64()
-    iosArm64()
-    iosSimulatorArm64()
-
-    targets.withType<org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget> {
-        binaries.framework {
-            baseName = "deviceai-runtime-kmp"
-            isStatic = true
-            linkerOpts("-Wl,-no_implicit_dylibs")
-            freeCompilerArgs += listOf("-Xbinary=bundleId=dev.deviceai.library")
-            freeCompilerArgs += "-Xoverride-konan-properties=osVersionMin.ios=$minIos"
-        }
-    }
 
     val isMacOs = org.gradle.internal.os.OperatingSystem.current().isMacOsX
 
@@ -68,153 +50,6 @@ kotlin {
     }
 
     val cmakePath = findTool("cmake")
-    val libtoolPath = findTool("libtool")
-
-    // iOS native builds
-    listOf(
-        Triple(iosX64(), "x86_64", "iPhoneSimulator"),
-        Triple(iosArm64(), "arm64", "iPhoneOS"),
-        Triple(iosSimulatorArm64(), "arm64", "iPhoneSimulator")
-    ).forEach { (arch, archName, sdkName) ->
-        val cmakeBuildDir = layout.buildDirectory
-            .dir("speech-cmake/$sdkName/${arch.name}")
-            .get()
-            .asFile
-        val buildTaskName = "buildSpeechCMake${arch.name.replaceFirstChar { it.uppercase() }}"
-
-        tasks.register(buildTaskName, Exec::class) {
-            doFirst {
-                val sourceDir = projectDir.resolve("cmake/speech-wrapper-ios")
-                val sdk = when (sdkName) {
-                    "iPhoneSimulator" -> "iphonesimulator"
-                    "iPhoneOS" -> "iphoneos"
-                    else -> "macosx"
-                }
-                val sdkPathProvider = providers.exec {
-                    commandLine("xcrun", "--sdk", sdk, "--show-sdk-path")
-                }.standardOutput.asText.map { it.trim() }
-                val systemName = if (sdk == "macosx") "Darwin" else "iOS"
-                cmakeBuildDir.mkdirs()
-                environment("PATH", "/opt/homebrew/bin:" + System.getenv("PATH"))
-
-                commandLine = listOf(
-                    cmakePath,
-                    "-S", sourceDir.absolutePath,
-                    "-B", cmakeBuildDir.absolutePath,
-                    "-DCMAKE_SYSTEM_NAME=$systemName",
-                    "-DCMAKE_OSX_ARCHITECTURES=$archName",
-                    "-DCMAKE_OSX_SYSROOT=${sdkPathProvider.get()}",
-                    "-DCMAKE_OSX_DEPLOYMENT_TARGET=$minIos",
-                    "-DCMAKE_INSTALL_PREFIX=${cmakeBuildDir.resolve("install")}",
-                    "-DCMAKE_IOS_INSTALL_COMBINED=NO",
-                    "-DCMAKE_BUILD_TYPE=Release",
-                    "-DCMAKE_POSITION_INDEPENDENT_CODE=ON"
-                )
-            }
-        }
-
-        val compileTask = tasks.register(
-            "compileSpeechCMake${arch.name.replaceFirstChar { it.uppercase() }}",
-            Exec::class
-        ) {
-            dependsOn(buildTaskName)
-            environment("PATH", "/opt/homebrew/bin:" + System.getenv("PATH"))
-            commandLine = listOf(
-                cmakePath,
-                "--build", cmakeBuildDir.absolutePath,
-                "--target", "speech_static",
-                "--verbose"
-            )
-        }
-
-        val libPath = cmakeBuildDir.absolutePath
-        val mergeTask = tasks.register(
-            "mergeSpeechStatic${arch.name.replaceFirstChar { it.uppercase() }}",
-            Exec::class
-        ) {
-            dependsOn(compileTask)
-            doFirst {
-                val libs = mutableListOf(
-                    "$libPath/libspeech_static.a"
-                )
-                // Add whisper libs if they exist
-                val whisperLib = "$libPath/whisper-build/src/libwhisper.a"
-                if (file(whisperLib).exists()) libs.add(whisperLib)
-
-                // Add ggml libs if they exist
-                listOf(
-                    "$libPath/whisper-build/ggml/src/libggml.a",
-                    "$libPath/whisper-build/ggml/src/libggml-base.a",
-                    "$libPath/whisper-build/ggml/src/libggml-cpu.a",
-                    "$libPath/whisper-build/ggml/src/ggml-metal/libggml-metal.a",
-                    "$libPath/whisper-build/ggml/src/ggml-blas/libggml-blas.a"
-                ).forEach { if (file(it).exists()) libs.add(it) }
-
-                // Add whisper.coreml lib if it exists (for Apple Neural Engine)
-                val coremlLib = "$libPath/whisper-build/src/libwhisper.coreml.a"
-                if (file(coremlLib).exists()) libs.add(coremlLib)
-
-                // Add piper libs if they exist
-                val piperLib = "$libPath/piper-build/libpiper.a"
-                if (file(piperLib).exists()) libs.add(piperLib)
-
-                commandLine = listOf(libtoolPath, "-static", "-o", "$libPath/libspeech_merged.a") + libs
-            }
-        }
-
-        // Ensure cinterop runs after native libs are built
-        tasks.withType<org.jetbrains.kotlin.gradle.tasks.CInteropProcess>().configureEach {
-            dependsOn(mergeTask)
-        }
-
-        arch.compilations.getByName("main").cinterops {
-            create("speech") {
-                defFile("src/iosMain/c_interop/speech_ios.def")
-                packageName("dev.deviceai.native")
-                compilerOpts("-I${projectDir}/src/iosMain/c_interop/include")
-                extraOpts("-libraryPath", libPath)
-
-                tasks.named(interopProcessingTaskName).configure {
-                    dependsOn(mergeTask)
-                }
-            }
-        }
-
-        val merged = "$libPath/libspeech_merged.a"
-
-        arch.binaries.getFramework("DEBUG").apply {
-            baseName = "deviceai-runtime-kmp"
-            isStatic = true
-            linkerOpts(
-                "-L$libPath",
-                "-Wl,-force_load", merged,
-                "-framework", "Accelerate",
-                "-framework", "Metal",
-                "-framework", "CoreML",
-                "-Wl,-no_implicit_dylibs",
-                if (sdkName.contains("Simulator"))
-                    "-mios-simulator-version-min=$minIos"
-                else
-                    "-mios-version-min=$minIos"
-            )
-        }
-        arch.binaries.getFramework("RELEASE").apply {
-            baseName = "deviceai-runtime-kmp"
-            isStatic = true
-            linkerOpts(
-                "-L$libPath",
-                "-Wl,-force_load", merged,
-                "-framework", "Accelerate",
-                "-framework", "Metal",
-                "-framework", "CoreML",
-                "-Wl,-no_implicit_dylibs",
-                if (sdkName.contains("Simulator"))
-                    "-mios-simulator-version-min=$minIos"
-                else
-                    "-mios-version-min=$minIos"
-            )
-        }
-    }
 
     // Desktop JNI build
     val macJniBuildDir = layout.buildDirectory
@@ -274,9 +109,6 @@ kotlin {
         }
         jvmMain.dependencies {
             implementation(libs.ktor.client.okhttp)
-        }
-        iosMain.dependencies {
-            implementation(libs.ktor.client.darwin)
         }
     }
 }

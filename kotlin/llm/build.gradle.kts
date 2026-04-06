@@ -11,14 +11,10 @@ plugins {
 group = "dev.deviceai"
 version = (System.getenv("RELEASE_VERSION") ?: "0.2.0-alpha02")
 
-val minIos = "17.0"
-
 kotlin {
     jvmToolchain(17)
 
-    // Extend default hierarchy template to add a shared jvmCommon source set.
-    // This keeps all default iOS source sets intact while avoiding copy-paste
-    // between androidMain and jvmMain.
+    // Shared jvmCommon source set — avoids copy-paste between androidMain and jvmMain.
     @OptIn(ExperimentalKotlinGradlePluginApi::class)
     applyDefaultHierarchyTemplate {
         common {
@@ -34,20 +30,6 @@ kotlin {
     }
 
     jvm()
-
-    iosX64()
-    iosArm64()
-    iosSimulatorArm64()
-
-    targets.withType<org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget> {
-        binaries.framework {
-            baseName = "deviceai-llm"
-            isStatic = true
-            linkerOpts("-Wl,-no_implicit_dylibs")
-            freeCompilerArgs += listOf("-Xbinary=bundleId=dev.deviceai.llm")
-            freeCompilerArgs += "-Xoverride-konan-properties=osVersionMin.ios=$minIos"
-        }
-    }
 
     val isMacOs = org.gradle.internal.os.OperatingSystem.current().isMacOsX
 
@@ -65,103 +47,7 @@ kotlin {
         throw GradleException("Cannot find '$name'. Install via 'brew install $name'.")
     }
 
-    val cmakePath   = findTool("cmake")
-    val libtoolPath = findTool("libtool")
-
-    // iOS native builds
-    listOf(
-        Triple(iosX64(),              "x86_64", "iPhoneSimulator"),
-        Triple(iosArm64(),            "arm64",  "iPhoneOS"),
-        Triple(iosSimulatorArm64(),   "arm64",  "iPhoneSimulator")
-    ).forEach { (arch, archName, sdkName) ->
-        val cmakeBuildDir = layout.buildDirectory
-            .dir("llm-cmake/$sdkName/${arch.name}")
-            .get().asFile
-        val buildTaskName = "buildLlmCMake${arch.name.replaceFirstChar { it.uppercase() }}"
-
-        tasks.register(buildTaskName, Exec::class) {
-            doFirst {
-                val sourceDir = projectDir.resolve("cmake/llm-wrapper-ios")
-                val sdk = if (sdkName == "iPhoneOS") "iphoneos" else "iphonesimulator"
-                val sdkPath = providers.exec {
-                    commandLine("xcrun", "--sdk", sdk, "--show-sdk-path")
-                }.standardOutput.asText.map { it.trim() }
-                cmakeBuildDir.mkdirs()
-                environment("PATH", "/opt/homebrew/bin:" + System.getenv("PATH"))
-                commandLine = listOf(
-                    cmakePath,
-                    "-S", sourceDir.absolutePath,
-                    "-B", cmakeBuildDir.absolutePath,
-                    "-DCMAKE_SYSTEM_NAME=iOS",
-                    "-DCMAKE_OSX_ARCHITECTURES=$archName",
-                    "-DCMAKE_OSX_SYSROOT=${sdkPath.get()}",
-                    "-DCMAKE_OSX_DEPLOYMENT_TARGET=$minIos",
-                    "-DCMAKE_INSTALL_PREFIX=${cmakeBuildDir.resolve("install")}",
-                    "-DCMAKE_BUILD_TYPE=Release",
-                    "-DCMAKE_POSITION_INDEPENDENT_CODE=ON"
-                )
-            }
-        }
-
-        val compileTask = tasks.register(
-            "compileLlmCMake${arch.name.replaceFirstChar { it.uppercase() }}", Exec::class
-        ) {
-            dependsOn(buildTaskName)
-            environment("PATH", "/opt/homebrew/bin:" + System.getenv("PATH"))
-            commandLine = listOf(cmakePath, "--build", cmakeBuildDir.absolutePath, "--target", "llm_static", "--verbose")
-        }
-
-        val libPath = cmakeBuildDir.absolutePath
-        val mergeTask = tasks.register(
-            "mergeLlmStatic${arch.name.replaceFirstChar { it.uppercase() }}", Exec::class
-        ) {
-            dependsOn(compileTask)
-            doFirst {
-                val libs = mutableListOf("$libPath/libllm_static.a")
-                listOf(
-                    "$libPath/llama-build/src/libllama.a",
-                    "$libPath/llama-build/ggml/src/libggml.a",
-                    "$libPath/llama-build/ggml/src/libggml-base.a",
-                    "$libPath/llama-build/ggml/src/libggml-cpu.a",
-                    "$libPath/llama-build/ggml/src/ggml-metal/libggml-metal.a",
-                    "$libPath/llama-build/ggml/src/ggml-blas/libggml-blas.a"
-                ).forEach { if (file(it).exists()) libs.add(it) }
-                commandLine = listOf(libtoolPath, "-static", "-o", "$libPath/libllm_merged.a") + libs
-            }
-        }
-
-        tasks.withType<org.jetbrains.kotlin.gradle.tasks.CInteropProcess>().configureEach {
-            dependsOn(mergeTask)
-        }
-
-        arch.compilations.getByName("main").cinterops {
-            create("llm") {
-                defFile("src/iosMain/c_interop/llm_ios.def")
-                packageName("dev.deviceai.llm.native")
-                compilerOpts("-I${projectDir}/src/iosMain/c_interop/include")
-                extraOpts("-libraryPath", libPath)
-                tasks.named(interopProcessingTaskName).configure { dependsOn(mergeTask) }
-            }
-        }
-
-        val merged = "$libPath/libllm_merged.a"
-        listOf("DEBUG", "RELEASE").forEach { variant ->
-            arch.binaries.getFramework(variant).apply {
-                baseName = "deviceai-llm"
-                isStatic = true
-                linkerOpts(
-                    "-L$libPath",
-                    "-Wl,-force_load", merged,
-                    "-framework", "Accelerate",
-                    "-framework", "Metal",
-                    "-framework", "MetalKit",
-                    "-Wl,-no_implicit_dylibs",
-                    if (sdkName.contains("Simulator")) "-mios-simulator-version-min=$minIos"
-                    else "-mios-version-min=$minIos"
-                )
-            }
-        }
-    }
+    val cmakePath = findTool("cmake")
 
     // Desktop JNI build
     val macJniBuildDir = layout.buildDirectory.dir("llm-jni/macos").get().asFile
@@ -207,9 +93,6 @@ kotlin {
         }
         jvmMain.dependencies {
             implementation(libs.ktor.client.okhttp)
-        }
-        iosMain.dependencies {
-            implementation(libs.ktor.client.darwin)
         }
     }
 }

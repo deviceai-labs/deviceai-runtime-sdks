@@ -1,8 +1,0 @@
-headers = speech_ios.h
-headerFilter = speech_ios.h
-compilerOpts = -I$PROJECT_DIR/../third_party/whisper.cpp/include \
-               -I$PROJECT_DIR/../third_party/whisper.cpp \
-               -I$PROJECT_DIR/src/iosMain/c_interop/include
-staticLibraries = libspeech_merged.a
-linkerOpts = -framework Accelerate -framework Metal -framework CoreML -lc++ -ObjC
-package = dev.deviceai.native
