@@ -61,14 +61,23 @@ extensions.configure<LibraryExtension> {
 
     externalNativeBuild {
         cmake {
-            path = file("src/commonMain/cpp/CMakeLists.txt")
+            path = file("../../sdk/deviceai-commons/CMakeLists.txt")
         }
     }
 
     defaultConfig {
         externalNativeBuild {
             cmake {
-                arguments("-DCMAKE_BUILD_TYPE=Release")
+                arguments(
+                    "-DCMAKE_BUILD_TYPE=Release",
+                    "-DDAI_BUILD_JNI=ON",
+                    "-DDAI_BUILD_IOS=OFF",
+                    "-DDAI_ENABLE_STT=OFF",
+                    "-DDAI_ENABLE_TTS=OFF",
+                    "-DDAI_ENABLE_LLM=ON",
+                    "-DDAI_ENABLE_CORE=OFF"
+                )
+                targets("deviceai_llm_jni")
             }
         }
     }

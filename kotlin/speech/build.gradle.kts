@@ -61,16 +61,32 @@ extensions.configure<LibraryExtension> {
         jniLibs { useLegacyPackaging = false }
     }
 
+    sourceSets {
+        getByName("main") {
+            // sherpa-onnx pre-built .so files for Android
+            jniLibs.srcDirs("../../sdk/deviceai-commons/prebuilt/sherpa-onnx")
+        }
+    }
+
     externalNativeBuild {
         cmake {
-            path = file("src/commonMain/cpp/CMakeLists.txt")
+            path = file("../../sdk/deviceai-commons/CMakeLists.txt")
         }
     }
 
     defaultConfig {
         externalNativeBuild {
             cmake {
-                arguments("-DCMAKE_BUILD_TYPE=Release")
+                arguments(
+                    "-DCMAKE_BUILD_TYPE=Release",
+                    "-DDAI_BUILD_JNI=ON",
+                    "-DDAI_BUILD_IOS=OFF",
+                    "-DDAI_ENABLE_STT=ON",
+                    "-DDAI_ENABLE_TTS=ON",
+                    "-DDAI_ENABLE_LLM=OFF",
+                    "-DDAI_ENABLE_CORE=OFF"
+                )
+                targets("speech_jni")
             }
         }
     }
