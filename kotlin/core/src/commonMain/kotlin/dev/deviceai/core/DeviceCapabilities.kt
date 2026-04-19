@@ -14,8 +14,8 @@ data class DeviceCapabilities(
     val ramGb: Double,
     /** Logical CPU core count (e.g. 8). */
     val cpuCores: Int,
-    /** True if the device has a dedicated neural processing unit (NNAPI on Android, ANE on iOS). */
-    val hasNpu: Boolean,
+    /** True if NNAPI is available (Android 8.1+) or ANE is present (arm64 Apple). Does NOT confirm a dedicated NPU chip — the backend uses [socModel] for accurate NPU detection. */
+    val hasNnapi: Boolean,
     /** SoC model name (e.g. "SM8550", "Apple A17 Pro"). Null if unavailable. */
     val socModel: String?,
     /** GPU renderer string (e.g. "Adreno (TM) 740", "Apple GPU"). Null if unavailable. */
@@ -27,7 +27,7 @@ data class DeviceCapabilities(
     fun toMap(): Map<String, Any?> = buildMap {
         put("ram_gb", ramGb)
         put("cpu_cores", cpuCores)
-        put("has_npu", hasNpu)
+        put("has_nnapi", hasNnapi)
         socModel?.let { put("soc_model", it) }
         gpuRenderer?.let { put("gpu_renderer", it) }
         storageAvailableMb?.let { put("storage_available_mb", it) }

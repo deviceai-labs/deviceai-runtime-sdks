@@ -23,8 +23,10 @@ actual fun detectCapabilities(context: Any?): DeviceCapabilities {
     // CPU cores
     val cpuCores = Runtime.getRuntime().availableProcessors()
 
-    // NPU — NNAPI available on Android 8.1+ (API 27)
-    val hasNpu = Build.VERSION.SDK_INT >= 27
+    // NNAPI available on Android 8.1+ (API 27).
+    // This does NOT confirm a dedicated NPU chip — many devices fall back to CPU/GPU.
+    // The backend uses soc_model to determine actual NPU presence.
+    val hasNnapi = Build.VERSION.SDK_INT >= 27
 
     // SoC model — available on Android 12+ (API 31)
     val socModel = if (Build.VERSION.SDK_INT >= 31) {
@@ -48,7 +50,7 @@ actual fun detectCapabilities(context: Any?): DeviceCapabilities {
     return DeviceCapabilities(
         ramGb              = "%.1f".format(ramGb).toDouble(),
         cpuCores           = cpuCores,
-        hasNpu             = hasNpu,
+        hasNnapi           = hasNnapi,
         socModel           = socModel,
         gpuRenderer        = gpuRenderer,
         storageAvailableMb = storageAvailableMb,
