@@ -15,11 +15,9 @@ import kotlin.time.Duration.Companion.hours
  *     environment = Environment.Production
  *     telemetry   = TelemetryLevel.Minimal
  *     appVersion  = BuildConfig.VERSION_NAME
- *     capabilityProfile = mapOf("ram_gb" to 8.0, "cpu_cores" to 8, "has_npu" to true)
- *     networkPolicy = NetworkPolicy(
- *         isOnWifi    = { wifiManager.connectionInfo.networkId != -1 },
- *         isDataSaver = { connectivityManager.isActiveNetworkMetered },
- *     )
+ *     // Hardware info (RAM, CPU, NPU, SoC) is auto-detected — no need to set it.
+ *     // Only add custom targeting attributes:
+ *     appAttributes = mapOf("user_tier" to "premium", "locale" to "en-US")
  * }
  * ```
  *
@@ -103,14 +101,11 @@ class CloudConfig private constructor(
         var manifestSyncInterval: Duration = 6.hours
 
         /**
-         * Device hardware capabilities for capability tier scoring and cohort targeting.
+         * Additional device capabilities for cohort targeting.
          *
-         * Recognised scoring keys:
-         * - `"ram_gb"`    — Float: total device RAM in GB (e.g. `8.0`)
-         * - `"cpu_cores"` — Int:   logical CPU core count (e.g. `8`)
-         * - `"has_npu"`   — Boolean: dedicated NPU / ANE present
-         *
-         * Additional keys are stored as-is for custom targeting.
+         * Hardware info (RAM, CPU cores, NPU, SoC) is **auto-detected** from the device.
+         * Use this only for custom overrides or additional targeting keys.
+         * Any key set here overrides the auto-detected value.
          */
         var capabilityProfile: Map<String, Any?> = emptyMap()
 
@@ -127,14 +122,17 @@ class CloudConfig private constructor(
          */
         var appAttributes: Map<String, String> = emptyMap()
 
-        internal fun build(): CloudConfig {
+        internal fun build(context: Any? = null): CloudConfig {
             val resolvedUrl = baseUrl ?: when (environment) {
                 Environment.Development -> "http://localhost:8080"
                 Environment.Staging     -> "https://staging.api.deviceai.dev"
                 Environment.Production  -> "https://api.deviceai.dev"
             }
+            // Auto-detect hardware → developer overrides → SDK metadata
+            val detected = try { detectCapabilities(context).toMap() } catch (_: Exception) { emptyMap() }
             val fullProfile = buildMap<String, Any?> {
-                putAll(capabilityProfile)
+                putAll(detected)              // auto-detected hardware (base)
+                putAll(capabilityProfile)      // developer overrides (wins over auto-detected)
                 put("sdk_version", SDK_VERSION)
                 put("platform", sdkPlatform)
                 appVersion?.let { put("app_version", it) }

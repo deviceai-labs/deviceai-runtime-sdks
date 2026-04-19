@@ -98,33 +98,42 @@ private data class DeviceSessionDto(
 
 @kotlinx.serialization.Serializable
 private data class ManifestResponseDto(
-    @kotlinx.serialization.SerialName("rollout_id") val rolloutId: String = "",
-    val entries: List<ManifestEntryDto> = emptyList(),
+    @kotlinx.serialization.SerialName("device_id")  val deviceId: String = "",
+    @kotlinx.serialization.SerialName("app_id")     val appId: String = "",
+    val tier: String = "mid",
+    @kotlinx.serialization.SerialName("issued_at")  val issuedAt: String = "",
+    @kotlinx.serialization.SerialName("expires_at") val expiresAt: String = "",
+    val models: List<ManifestEntryDto> = emptyList(),
+    val signature: String = "",
 ) {
     fun toManifestResponse() = ManifestResponse(
-        deviceId  = "",
-        appId     = "",
-        tier      = "mid",
-        models    = entries.map { it.toManifestEntry() },
-        signature = "",
+        deviceId  = deviceId,
+        appId     = appId,
+        tier      = tier,
+        issuedAt  = issuedAt,
+        expiresAt = expiresAt,
+        models    = models.map { it.toManifestEntry() },
+        signature = signature,
     )
 }
 
 @kotlinx.serialization.Serializable
 private data class ManifestEntryDto(
-    @kotlinx.serialization.SerialName("model_id")      val modelId: String = "",
-    @kotlinx.serialization.SerialName("download_url")  val downloadUrl: String = "",
-    val format: String = "",
-    @kotlinx.serialization.SerialName("size_bytes")    val sizeBytes: Long = 0,
-    @kotlinx.serialization.SerialName("kill_switch")   val killSwitch: Boolean = false,
+    val module: String = "",
+    @kotlinx.serialization.SerialName("model_id")   val modelId: String = "",
+    val version: String = "",
+    val sha256: String = "",
+    @kotlinx.serialization.SerialName("size_bytes")  val sizeBytes: Long = 0,
+    @kotlinx.serialization.SerialName("cdn_path")    val cdnPath: String = "",
+    @kotlinx.serialization.SerialName("rollout_id")  val rolloutId: String = "",
 ) {
     fun toManifestEntry() = ManifestEntry(
-        module    = format,
+        module    = module,
         modelId   = modelId,
-        version   = "",
-        sha256    = "",
+        version   = version,
+        sha256    = sha256,
         sizeBytes = sizeBytes,
-        cdnPath   = downloadUrl,
-        rolloutId = "",
+        cdnPath   = cdnPath,
+        rolloutId = rolloutId,
     )
 }

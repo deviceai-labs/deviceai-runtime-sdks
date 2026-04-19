@@ -93,7 +93,7 @@ object DeviceAI {
         apiKey: String? = null,
         block: CloudConfig.Builder.() -> Unit = {},
     ) {
-        val config = CloudConfig.Builder(apiKey).apply(block).build()
+        val config = CloudConfig.Builder(apiKey).apply(block).build(context)
 
         DeviceAIRuntime.configure(config.environment)
         cloudConfig = config
