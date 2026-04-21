@@ -403,27 +403,31 @@ JNIEXPORT jstring JNICALL JNI_FN(nativeFetchManifest)(
 
     if (err != DAI_OK) return nullptr;
 
-    // Serialize back to JSON for Kotlin's ManifestResponse deserialization.
-    // Build entries array.
-    std::string entries_json = "[";
-    for (int i = 0; i < manifest.entry_count; i++) {
-        const auto& e = manifest.entries[i];
-        if (i > 0) entries_json += ",";
-        char entry_buf[1024];
-        snprintf(entry_buf, sizeof(entry_buf),
-            "{\"model_id\":\"%s\",\"download_url\":\"%s\","
-            "\"checksum_sha256\":\"%s\",\"size_bytes\":%" PRId64 ","
-            "\"format\":\"%s\",\"is_required\":%s,\"kill_switch\":%s}",
-            e.model_id, e.download_url, e.checksum_sha256, e.size_bytes,
-            e.format, e.is_required ? "true" : "false",
-            e.kill_switch ? "true" : "false");
-        entries_json += entry_buf;
+    // Serialize back to JSON matching Kotlin's ManifestResponseDto field names.
+    std::string models_json = "[";
+    for (int i = 0; i < manifest.model_count; i++) {
+        const auto& m = manifest.models[i];
+        if (i > 0) models_json += ",";
+        char buf[1024];
+        snprintf(buf, sizeof(buf),
+            "{\"module\":\"%s\",\"model_id\":\"%s\",\"version\":\"%s\","
+            "\"sha256\":\"%s\",\"size_bytes\":%" PRId64 ","
+            "\"cdn_path\":\"%s\",\"rollout_id\":\"%s\"}",
+            m.module, m.model_id, m.version,
+            m.sha256, m.size_bytes,
+            m.cdn_path, m.rollout_id);
+        models_json += buf;
     }
-    entries_json += "]";
+    models_json += "]";
 
-    std::string result = "{\"rollout_id\":\"" + std::string(manifest.rollout_id) +
-                         "\",\"entries\":" + entries_json + "}";
-    return env->NewStringUTF(result.c_str());
+    char result[4096];
+    snprintf(result, sizeof(result),
+        "{\"device_id\":\"%s\",\"app_id\":\"%s\",\"tier\":\"%s\","
+        "\"issued_at\":\"\",\"expires_at\":\"\","
+        "\"models\":%s,\"signature\":\"\"}",
+        manifest.device_id, manifest.app_id, manifest.tier,
+        models_json.c_str());
+    return env->NewStringUTF(result);
 }
 
 // ── Backend — refresh token ───────────────────────────────────────────────────
