@@ -32,6 +32,8 @@ internal actual fun createTelemetryEngine(
     sessionProvider: (() -> DeviceSession?)?,
 ): TelemetryEngine {
     jniInit.value
-    // JNI engine handles delivery internally — customSink and clientForSink not used on this path.
-    return JniTelemetryEngine(level, policy, baseUrl)
+    // Lower flush threshold for non-production environments (5 vs 100).
+    val isProduction = baseUrl.contains("api.deviceai.dev") && !baseUrl.contains("staging")
+    val threshold = if (isProduction) 0 else 5 // 0 = default (100)
+    return JniTelemetryEngine(level, policy, baseUrl, flushThreshold = threshold)
 }

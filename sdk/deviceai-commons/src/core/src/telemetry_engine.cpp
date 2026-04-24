@@ -49,6 +49,7 @@ struct dai_telemetry_engine_t {
     dai_network_policy_t   policy;
     std::string            base_url;
     dai_platform_t         platform;
+    int                    configured_flush_threshold;
 
     // Session — set after device registration
     std::mutex  session_mutex;
@@ -96,11 +97,12 @@ struct dai_telemetry_engine_t {
     }
 
     int normal_flush_threshold() const {
+        int base = configured_flush_threshold > 0 ? configured_flush_threshold : FLUSH_THRESHOLD;
         if (is_data_saver()) {
             int mult = policy.data_saver_multiplier > 0 ? policy.data_saver_multiplier : 5;
-            return FLUSH_THRESHOLD * mult;
+            return base * mult;
         }
-        return FLUSH_THRESHOLD;
+        return base;
     }
 
     // ── Flush helpers ─────────────────────────────────────────────────────
@@ -224,7 +226,8 @@ dai_telemetry_engine_t* dai_telemetry_create(
     dai_telemetry_level_t       level,
     const dai_network_policy_t* policy,
     const char*                 base_url,
-    const dai_platform_t*       platform
+    const dai_platform_t*       platform,
+    int                         flush_threshold
 ) {
     if (!base_url || !platform) return nullptr;
 
@@ -232,6 +235,7 @@ dai_telemetry_engine_t* dai_telemetry_create(
     engine->level    = level;
     engine->base_url = base_url;
     engine->platform = *platform;
+    engine->configured_flush_threshold = flush_threshold;
 
     if (policy) {
         engine->policy = *policy;

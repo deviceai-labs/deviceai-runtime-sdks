@@ -69,7 +69,8 @@ internal object CoreJniBridge {
         hasDataSaver: Boolean,
         dataSaverMultiplier: Int,
         baseUrl: String,
-    ): Long = nativeCreateEngine(level, hasWifiChecker, hasDataSaver, dataSaverMultiplier, baseUrl)
+        flushThreshold: Int = 0,
+    ): Long = nativeCreateEngine(level, hasWifiChecker, hasDataSaver, dataSaverMultiplier, baseUrl, flushThreshold)
 
     fun destroyEngine(handle: Long) = nativeDestroyEngine(handle)
 
@@ -145,6 +146,7 @@ internal object CoreJniBridge {
         hasDataSaver: Boolean,
         dataSaverMultiplier: Int,
         baseUrl: String,
+        flushThreshold: Int,
     ): Long
 
     private external fun nativeDestroyEngine(handle: Long)

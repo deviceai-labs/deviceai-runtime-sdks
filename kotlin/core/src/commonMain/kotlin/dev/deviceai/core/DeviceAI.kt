@@ -141,6 +141,9 @@ object DeviceAI {
             )
         }
 
+        // Auto-flush telemetry when app goes to background.
+        registerLifecycleFlush(context)
+
         // Kick off async device session + manifest bootstrap.
         sdkScope.launch {
             bootstrapManagedMode(config, client)
@@ -298,3 +301,10 @@ object DeviceAI {
 
 // Platform-provided session ID generator (UUID v4 string).
 internal expect fun generateSessionId(): String
+
+/**
+ * Register a lifecycle callback to auto-flush telemetry when the app goes to background.
+ * Android: uses ProcessLifecycleOwner ON_STOP.
+ * Other platforms: no-op.
+ */
+internal expect fun DeviceAI.registerLifecycleFlush(context: Any?)

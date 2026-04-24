@@ -148,17 +148,19 @@ typedef struct dai_telemetry_engine_t dai_telemetry_engine_t;
 /**
  * Create a TelemetryEngine.
  *
- * @param level      Verbosity — controls which event types are accepted.
- * @param policy     Network-awareness callbacks. May be zero-initialised for defaults.
- * @param base_url   DeviceAI backend base URL (null-terminated).
- * @param platform   Platform callbacks for HTTP, clock, and logging.
- * @return           Opaque engine handle. Must be destroyed via dai_telemetry_destroy().
+ * @param level            Verbosity — controls which event types are accepted.
+ * @param policy           Network-awareness callbacks. May be zero-initialised for defaults.
+ * @param base_url         DeviceAI backend base URL (null-terminated).
+ * @param platform         Platform callbacks for HTTP, clock, and logging.
+ * @param flush_threshold  Normal buffer flush threshold. 0 = default (100 for production, 5 for staging).
+ * @return                 Opaque engine handle. Must be destroyed via dai_telemetry_destroy().
  */
 dai_telemetry_engine_t* dai_telemetry_create(
     dai_telemetry_level_t       level,
     const dai_network_policy_t* policy,
     const char*                 base_url,
-    const dai_platform_t*       platform
+    const dai_platform_t*       platform,
+    int                         flush_threshold
 );
 
 /**

@@ -476,7 +476,8 @@ JNIEXPORT jlong JNICALL JNI_FN(nativeCreateEngine)(
     jint  j_has_wifi_checker,
     jint  j_has_data_saver,
     jint  j_data_saver_multiplier,
-    jstring j_base_url
+    jstring j_base_url,
+    jint  j_flush_threshold
 ) {
     // We register Kotlin-side wifi/data-saver checkers as simple int fields
     // updated by the Kotlin layer via nativeUpdateNetworkState().
@@ -502,7 +503,8 @@ JNIEXPORT jlong JNICALL JNI_FN(nativeCreateEngine)(
         static_cast<dai_telemetry_level_t>(j_level),
         &policy,
         base_url.c_str(),
-        &g_platform);
+        &g_platform,
+        j_flush_threshold);
 
     return reinterpret_cast<jlong>(engine);
 }

@@ -17,6 +17,7 @@ internal class JniTelemetryEngine(
     level: TelemetryLevel,
     policy: NetworkPolicy,
     baseUrl: String,
+    flushThreshold: Int = 0,
 ) : TelemetryEngine {
 
     private val handle: Long = CoreJniBridge.createEngine(
@@ -25,6 +26,7 @@ internal class JniTelemetryEngine(
         hasDataSaver        = policy.isDataSaver != null,
         dataSaverMultiplier = policy.dataSaverThresholdMultiplier,
         baseUrl             = baseUrl,
+        flushThreshold      = flushThreshold,
     )
 
     override fun setSession(deviceToken: String, sessionId: String) {
