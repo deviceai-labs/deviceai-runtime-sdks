@@ -51,8 +51,12 @@ Java_dev_deviceai_llm_engine_LlmJniEngine_nativeGenerate(
     std::vector<const char*> roles(count), contents(count);
 
     for (int i = 0; i < count; i++) {
-        role_strs[i]    = jstring_to_std(env, (jstring)env->GetObjectArrayElement(jRoles, i));
-        content_strs[i] = jstring_to_std(env, (jstring)env->GetObjectArrayElement(jContents, i));
+        jstring jRole = (jstring)env->GetObjectArrayElement(jRoles, i);
+        jstring jContent = (jstring)env->GetObjectArrayElement(jContents, i);
+        role_strs[i]    = jstring_to_std(env, jRole);
+        content_strs[i] = jstring_to_std(env, jContent);
+        env->DeleteLocalRef(jRole);
+        env->DeleteLocalRef(jContent);
         roles[i]    = role_strs[i].c_str();
         contents[i] = content_strs[i].c_str();
     }
@@ -62,7 +66,7 @@ Java_dev_deviceai_llm_engine_LlmJniEngine_nativeGenerate(
         maxTokens, temperature, topP, topK, repeatPenalty
     );
 
-    if (!result) return nullptr;
+    if (!result) return env->NewStringUTF("");
     jstring jResult = env->NewStringUTF(result);
     dai_llm_free_string(result);
     return jResult;
@@ -81,8 +85,12 @@ Java_dev_deviceai_llm_engine_LlmJniEngine_nativeGenerateStream(
     std::vector<const char*> roles(count), contents(count);
 
     for (int i = 0; i < count; i++) {
-        role_strs[i]    = jstring_to_std(env, (jstring)env->GetObjectArrayElement(jRoles, i));
-        content_strs[i] = jstring_to_std(env, (jstring)env->GetObjectArrayElement(jContents, i));
+        jstring jRole = (jstring)env->GetObjectArrayElement(jRoles, i);
+        jstring jContent = (jstring)env->GetObjectArrayElement(jContents, i);
+        role_strs[i]    = jstring_to_std(env, jRole);
+        content_strs[i] = jstring_to_std(env, jContent);
+        env->DeleteLocalRef(jRole);
+        env->DeleteLocalRef(jContent);
         roles[i]    = role_strs[i].c_str();
         contents[i] = content_strs[i].c_str();
     }
