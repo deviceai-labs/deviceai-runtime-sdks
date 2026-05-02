@@ -27,7 +27,12 @@ static jobject build_jni_result(JNIEnv *env, const dai_stt_result_t *result) {
     jclass segmentClass = env->FindClass("dev/deviceai/Segment");
     jclass listClass    = env->FindClass("java/util/ArrayList");
 
-    if (!resultClass || !segmentClass || !listClass) return nullptr;
+    if (!resultClass || !segmentClass || !listClass) {
+        if (listClass)    env->DeleteLocalRef(listClass);
+        if (segmentClass) env->DeleteLocalRef(segmentClass);
+        if (resultClass)  env->DeleteLocalRef(resultClass);
+        return nullptr;
+    }
 
     jmethodID resultCtor  = env->GetMethodID(resultClass,  "<init>",
         "(Ljava/lang/String;Ljava/util/List;Ljava/lang/String;J)V");

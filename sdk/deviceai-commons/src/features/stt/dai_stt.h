@@ -81,6 +81,13 @@ dai_stt_result_t* dai_stt_transcribe_detailed(const char* audio_path);
 
 /**
  * Transcribe with streaming callbacks.
+ *
+ * NOTE: Callbacks are invoked while the internal mutex is held.
+ * Callbacks MUST NOT re-enter the STT API (e.g., call dai_stt_cancel or
+ * dai_stt_shutdown) — doing so will deadlock. Pointers in the result
+ * passed to on_final are only valid for the duration of the callback;
+ * callers must copy any data they need to retain.
+ *
  * @param on_partial  Called with accumulated text after each segment.
  * @param on_final    Called with the complete result at the end.
  * @param on_error    Called on error.
