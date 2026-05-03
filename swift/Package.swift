@@ -17,12 +17,20 @@ let package = Package(
         .binaryTarget(name: "CWhisper", path: "Binaries/CWhisper.xcframework"),
         .binaryTarget(name: "CLlama", path: "Binaries/CLlama.xcframework"),
 
-        // ── C interop module ─────────────────────────────────────────
+        // ── C interop module (compiles features layer C++) ────────────
         .target(
             name: "CDeviceAI",
             dependencies: ["CWhisper", "CLlama"],
             path: "Sources/CDeviceAI",
-            publicHeadersPath: "include"
+            publicHeadersPath: "include",
+            cxxSettings: [
+                .headerSearchPath("include"),
+            ],
+            linkerSettings: [
+                .linkedFramework("Accelerate"),
+                .linkedFramework("Metal"),
+                .linkedFramework("MetalKit"),
+            ]
         ),
 
         // ── Core module (entry point + cloud + telemetry) ────────────
