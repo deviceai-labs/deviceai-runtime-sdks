@@ -1,6 +1,8 @@
 // swift-tools-version: 6.0
 import PackageDescription
 
+let version = "0.0.1"
+
 let package = Package(
     name: "DeviceAI",
     platforms: [
@@ -14,20 +16,18 @@ let package = Package(
     ],
     targets: [
         // ── Pre-built C++ engines as XCFrameworks ────────────────────
-        .binaryTarget(name: "CWhisper", path: "Binaries/CWhisper.xcframework"),
-        .binaryTarget(name: "CLlama", path: "Binaries/CLlama.xcframework"),
-        .binaryTarget(name: "CSherpaOnnx", path: "Binaries/CSherpaOnnx.xcframework"),
+        .binaryTarget(name: "CWhisper", path: "swift/Binaries/CWhisper.xcframework"),
+        .binaryTarget(name: "CLlama", path: "swift/Binaries/CLlama.xcframework"),
+        .binaryTarget(name: "CSherpaOnnx", path: "swift/Binaries/CSherpaOnnx.xcframework"),
 
         // ── C interop module (compiles features layer C++) ────────────
         .target(
             name: "CDeviceAI",
             dependencies: ["CWhisper", "CLlama", "CSherpaOnnx"],
-            path: "Sources/CDeviceAI",
+            path: "swift/Sources/CDeviceAI",
             publicHeadersPath: "include",
             cxxSettings: [
                 .headerSearchPath("include"),
-                // HAVE_SHERPA_ONNX is defined automatically when CSherpaOnnx headers are found
-                // via the XCFramework. On macOS swift build, TTS compiles as no-op stubs.
             ],
             linkerSettings: [
                 .linkedFramework("Accelerate"),
@@ -41,38 +41,38 @@ let package = Package(
         // ── Core module (entry point + cloud + telemetry) ────────────
         .target(
             name: "DeviceAI",
-            path: "Sources/DeviceAI"
+            path: "swift/Sources/DeviceAI"
         ),
 
         // ── Speech module (STT + TTS) ────────────────────────────────
         .target(
             name: "DeviceAISpeech",
             dependencies: ["DeviceAI", "CDeviceAI"],
-            path: "Sources/DeviceAISpeech"
+            path: "swift/Sources/DeviceAISpeech"
         ),
 
         // ── LLM module (chat + RAG) ─────────────────────────────────
         .target(
             name: "DeviceAILLM",
             dependencies: ["DeviceAI", "CDeviceAI"],
-            path: "Sources/DeviceAILLM"
+            path: "swift/Sources/DeviceAILLM"
         ),
 
         // ── Tests ────────────────────────────────────────────────────
         .testTarget(
             name: "DeviceAITests",
             dependencies: ["DeviceAI"],
-            path: "Tests/DeviceAITests"
+            path: "swift/Tests/DeviceAITests"
         ),
         .testTarget(
             name: "DeviceAISpeechTests",
             dependencies: ["DeviceAISpeech"],
-            path: "Tests/DeviceAISpeechTests"
+            path: "swift/Tests/DeviceAISpeechTests"
         ),
         .testTarget(
             name: "DeviceAILLMTests",
             dependencies: ["DeviceAILLM"],
-            path: "Tests/DeviceAILLMTests"
+            path: "swift/Tests/DeviceAILLMTests"
         ),
     ]
 )

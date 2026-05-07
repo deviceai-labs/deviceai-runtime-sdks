@@ -1,16 +1,20 @@
 # DeviceAI
 
-**On-device AI for Android — speech recognition, text-to-speech, and LLM chat. Zero cloud latency, zero privacy risk. Optional cloud backend for OTA model updates, telemetry, and device management.**
+**On-device AI for Android & iOS — speech recognition, text-to-speech, and LLM chat. Zero cloud latency, zero privacy risk. Optional cloud backend for OTA model updates, telemetry, and device management.**
 
 [![Build](https://github.com/deviceai-labs/deviceai/actions/workflows/ci.yml/badge.svg)](https://github.com/deviceai-labs/deviceai/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 [![Maven Central](https://img.shields.io/maven-central/v/dev.deviceai/core)](https://central.sonatype.com/artifact/dev.deviceai/core)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.2-blueviolet?logo=kotlin)](https://kotlinlang.org)
+[![Swift](https://img.shields.io/badge/Swift-6.0-orange?logo=swift)](https://swift.org)
 [![Android](https://img.shields.io/badge/Platform-Android-green)](https://developer.android.com)
+[![iOS](https://img.shields.io/badge/Platform-iOS%2017%2B-blue)](https://developer.apple.com)
 
 ---
 
 ## Install
+
+### Android (Kotlin)
 
 ```kotlin
 // build.gradle.kts
@@ -19,9 +23,37 @@ implementation("dev.deviceai:speech:0.3.0-alpha01")   // STT + TTS
 implementation("dev.deviceai:llm:0.3.0-alpha01")      // LLM + RAG
 ```
 
+### iOS / macOS (Swift Package Manager)
+
+Add the DeviceAI package to your Xcode project or `Package.swift`:
+
+```swift
+// Package.swift
+dependencies: [
+    .package(url: "https://github.com/deviceai-labs/deviceai", from: "0.0.1")
+]
+```
+
+Then add the modules you need:
+
+```swift
+.target(
+    name: "YourApp",
+    dependencies: [
+        .product(name: "DeviceAI", package: "deviceai"),
+        .product(name: "DeviceAISpeech", package: "deviceai"),   // STT + TTS
+        .product(name: "DeviceAILLM", package: "deviceai"),      // LLM + RAG
+    ]
+)
+```
+
+Or in Xcode: **File → Add Package Dependencies** → paste `https://github.com/deviceai-labs/deviceai` → select the modules you need.
+
 ---
 
 ## Initialize
+
+### Android
 
 ```kotlin
 class MyApp : Application() {
@@ -33,9 +65,25 @@ class MyApp : Application() {
 }
 ```
 
+### iOS / macOS
+
+```swift
+import DeviceAI
+
+// Local mode — no cloud, fully offline
+DeviceAI.initialize()
+
+// With cloud backend (optional)
+DeviceAI.initialize(apiKey: "dai_live_...") {
+    $0.telemetry = .minimal
+}
+```
+
 That's it. The SDK runs fully on-device with no backend required.
 
 ### With cloud backend (optional)
+
+**Android:**
 
 ```kotlin
 DeviceAI.initialize(context = this, apiKey = "dai_live_...") {
@@ -44,11 +92,22 @@ DeviceAI.initialize(context = this, apiKey = "dai_live_...") {
 }
 ```
 
+**iOS:**
+
+```swift
+DeviceAI.initialize(apiKey: "dai_live_...") {
+    $0.telemetry = .minimal
+    $0.appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+}
+```
+
 The API key connects the SDK to the DeviceAI cloud backend. Device hardware (RAM, CPU, SoC) is detected automatically — no manual configuration needed.
 
 ---
 
 ## Speech-to-Text
+
+### Android
 
 ```kotlin
 SpeechBridge.initStt(modelPath, SttConfig(language = "en", useGpu = true))
@@ -62,9 +121,25 @@ val textFromFile = SpeechBridge.transcribe("/path/to/audio.wav")
 SpeechBridge.shutdownStt()
 ```
 
-Powered by [whisper.cpp](https://github.com/ggerganov/whisper.cpp). Runs 7× faster than real-time on mid-range Android hardware.
+### iOS
+
+```swift
+let engine = try await SttEngine(modelPath: path, config: .init(language: "en"))
+
+// From raw audio samples
+let text = try await engine.transcribe(samples: audioBuffer)  // [Float], 16kHz mono
+
+// From a WAV file
+let textFromFile = try await engine.transcribe(audioPath: "/path/to/audio.wav")
+
+engine.shutdown()
+```
+
+Powered by [whisper.cpp](https://github.com/ggerganov/whisper.cpp). Runs 7× faster than real-time on mid-range hardware.
 
 ## Text-to-Speech
+
+### Android
 
 ```kotlin
 SpeechBridge.initTts(modelPath, tokensPath, TtsConfig(speechRate = 1.0f))
@@ -75,9 +150,23 @@ val pcm: ShortArray = SpeechBridge.synthesize("Hello from DeviceAI.")
 SpeechBridge.shutdownTts()
 ```
 
+### iOS
+
+```swift
+let tts = try await TtsEngine(modelPath: path, tokensPath: tokens)
+let audio = try await tts.synthesize("Hello from DeviceAI")
+tts.shutdown()
+
+// Or use Apple's built-in voices (zero setup, no model download):
+let systemTts = SystemTTSEngine()
+try await systemTts.speak("Hello from DeviceAI")
+```
+
 Powered by [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx). Supports VITS and Kokoro voice models.
 
 ## LLM Chat
+
+### Android
 
 ```kotlin
 val session = DeviceAI.llm.chat("/path/to/model.gguf") {
@@ -99,9 +188,36 @@ session.clearHistory()  // fresh conversation
 session.close()         // unload model
 ```
 
-Powered by [llama.cpp](https://github.com/ggerganov/llama.cpp). Supports any GGUF model with Vulkan GPU acceleration.
+### iOS
+
+```swift
+let session = try await ChatSession(modelPath: path) {
+    $0.systemPrompt = "You are a helpful assistant."
+    $0.maxTokens = 512
+    $0.temperature = 0.7
+}
+
+// Streaming
+for try await token in try session.send("What is Swift?") {
+    print(token, terminator: "")
+}
+
+// Multi-turn — history managed automatically
+for try await token in try session.send("Give me an example.") {
+    print(token, terminator: "")
+}
+
+// Lifecycle
+session.cancel()        // abort generation
+session.clearHistory()  // fresh conversation
+session.close()         // unload model
+```
+
+Powered by [llama.cpp](https://github.com/ggerganov/llama.cpp). Supports any GGUF model. Vulkan GPU on Android, Metal GPU on iOS.
 
 ## Offline RAG
+
+### Android
 
 ```kotlin
 val store = BM25RagStore(rawChunks = listOf(
@@ -110,6 +226,21 @@ val store = BM25RagStore(rawChunks = listOf(
 ))
 val session = DeviceAI.llm.chat("/path/to/model.gguf") { ragStore = store }
 session.send("What GPU does DeviceAI use?").collect { print(it) }
+```
+
+### iOS
+
+```swift
+let store = BM25RagStore(chunks: [
+    "DeviceAI supports Android and iOS.",
+    "LLM inference uses llama.cpp with Metal GPU."
+])
+let session = try await ChatSession(modelPath: path) {
+    $0.ragStore = store
+}
+for try await token in try session.send("What GPU does DeviceAI use?") {
+    print(token, terminator: "")
+}
 ```
 
 No embedding model needed — BM25 keyword retrieval runs entirely on-device.
@@ -138,20 +269,23 @@ When telemetry is enabled, the SDK automatically tracks performance metrics for 
 
 ### Telemetry levels
 
+**Android:**
+
 ```kotlin
-// Off (default) — nothing sent
 DeviceAI.initialize(context = this, apiKey = "dai_live_...") {
-    telemetry = TelemetryLevel.Off
+    telemetry = TelemetryLevel.Off      // default — nothing sent
+    telemetry = TelemetryLevel.Minimal  // model load/unload + inference metrics
+    telemetry = TelemetryLevel.Full     // includes OTA downloads + manifest syncs
 }
+```
 
-// Minimal — model load/unload + inference metrics
-DeviceAI.initialize(context = this, apiKey = "dai_live_...") {
-    telemetry = TelemetryLevel.Minimal
-}
+**iOS:**
 
-// Full — includes OTA downloads + manifest syncs
-DeviceAI.initialize(context = this, apiKey = "dai_live_...") {
-    telemetry = TelemetryLevel.Full
+```swift
+DeviceAI.initialize(apiKey: "dai_live_...") {
+    $0.telemetry = .off      // default — nothing sent
+    $0.telemetry = .minimal  // model load/unload + inference metrics
+    $0.telemetry = .full     // includes OTA downloads + manifest syncs
 }
 ```
 
@@ -161,6 +295,8 @@ Events are batched on-device and delivered efficiently — respects Wi-Fi prefer
 
 Route events to your own analytics instead of the DeviceAI backend:
 
+**Android:**
+
 ```kotlin
 DeviceAI.initialize(context = this, apiKey = "dai_live_...") {
     telemetry = TelemetryLevel.Minimal
@@ -169,6 +305,15 @@ DeviceAI.initialize(context = this, apiKey = "dai_live_...") {
             myAnalytics.track(events)
         }
     }
+}
+```
+
+**iOS:**
+
+```swift
+DeviceAI.initialize(apiKey: "dai_live_...") {
+    $0.telemetry = .minimal
+    $0.telemetrySink = MyAnalyticsSink()  // conforms to TelemetrySink protocol
 }
 ```
 
@@ -215,38 +360,37 @@ Browse LLM models with `LlmCatalog`. Download Whisper/TTS models via `ModelRegis
 
 ## Features
 
-| Feature | Status |
-|---------|--------|
-| Speech-to-Text (whisper.cpp) | ✅ |
-| Text-to-Speech (sherpa-onnx VITS / Kokoro) | ✅ |
-| Voice Activity Detection | ✅ |
-| LLM inference (llama.cpp, GGUF) | ✅ |
-| Streaming generation (`Flow<String>`) | ✅ |
-| Stateful multi-turn chat | ✅ |
-| Offline RAG (BM25) | ✅ |
-| Auto model download (HuggingFace) | ✅ |
-| GPU acceleration (Vulkan) | ✅ |
-| Cloud backend (registration, manifest, telemetry) | ✅ |
-| Auto hardware detection | ✅ |
-| Stable device identity (survives reinstall) | ✅ |
-| STT/TTS/LLM telemetry | ✅ |
-| Custom telemetry sink | ✅ |
-| OTA model rollouts + kill switch | ✅ |
-| Swift SDK (iOS / macOS) | 🚧 In progress |
-| Flutter plugin | 🗓 Planned |
-| React Native module | 🗓 Planned |
-| Developer dashboard | 🗓 Planned |
+| Feature | Android | iOS |
+|---------|---------|-----|
+| Speech-to-Text (whisper.cpp) | ✅ | ✅ |
+| Text-to-Speech (sherpa-onnx VITS / Kokoro) | ✅ | ✅ |
+| System TTS (Apple AVSpeechSynthesizer) | — | ✅ |
+| Voice Activity Detection | ✅ | ✅ |
+| LLM inference (llama.cpp, GGUF) | ✅ | ✅ |
+| Streaming generation | ✅ | ✅ |
+| Stateful multi-turn chat | ✅ | ✅ |
+| Offline RAG (BM25) | ✅ | ✅ |
+| Auto model download (HuggingFace) | ✅ | 🗓 |
+| GPU acceleration | ✅ Vulkan | ✅ Metal |
+| Cloud backend (registration, manifest, telemetry) | ✅ | ✅ |
+| Auto hardware detection | ✅ | ✅ |
+| Stable device identity (survives reinstall) | ✅ | ✅ |
+| Telemetry (STT/TTS/LLM) | ✅ | ✅ |
+| Custom telemetry sink | ✅ | ✅ |
+| OTA model rollouts + kill switch | ✅ | ✅ |
+| Flutter plugin | 🗓 | 🗓 |
+| React Native module | 🗓 | 🗓 |
 
 ---
 
 ## Platform support
 
-| Platform | STT | TTS | LLM | Status |
-|----------|-----|-----|-----|--------|
-| Android (API 26+) | ✅ | ✅ | ✅ | Available |
-| iOS / macOS | — | — | — | Swift SDK in progress |
-| Flutter | — | — | — | Planned |
-| React Native | — | — | — | Planned |
+| Platform | STT | TTS | LLM | Version | Status |
+|----------|-----|-----|-----|---------|--------|
+| Android (API 26+) | ✅ | ✅ | ✅ | 0.3.0-alpha01 | Available |
+| iOS 17+ / macOS 14+ | ✅ | ✅ | ✅ | 0.0.1 | Available |
+| Flutter | — | — | — | — | Planned |
+| React Native | — | — | — | — | Planned |
 
 ---
 
@@ -262,6 +406,8 @@ Browse LLM models with `LlmCatalog`. Download Whisper/TTS models via `ModelRegis
 
 ## Building from source
 
+### Android
+
 ```bash
 git clone https://github.com/deviceai-labs/deviceai.git
 cd deviceai
@@ -271,19 +417,34 @@ make setup
 ./gradlew :kotlin:llm:compileDebugKotlinAndroid
 ```
 
+### iOS (Swift)
+
+```bash
+git clone https://github.com/deviceai-labs/deviceai.git
+cd deviceai
+
+# Build XCFrameworks (requires Xcode + CMake)
+./sdk/deviceai-commons/scripts/build-xcframeworks.sh
+
+# Build the Swift package
+cd swift
+swift build
+```
+
 ---
 
 ## Sample App
 
 ```bash
-# Open samples/androidApp/ in Android Studio and run on device/emulator
+# Android: Open samples/androidApp/ in Android Studio and run on device/emulator
+# iOS: Open samples/iosApp/ in Xcode
 ```
 
 ---
 
 ## Contributing
 
-Issues and PRs welcome. Platform SDK contributions (`swift/`, `flutter/`, `react-native/`) are especially welcome.
+Issues and PRs welcome. Platform SDK contributions (`flutter/`, `react-native/`) are especially welcome.
 
 ---
 
