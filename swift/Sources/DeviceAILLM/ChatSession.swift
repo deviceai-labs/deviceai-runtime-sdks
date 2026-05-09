@@ -8,7 +8,7 @@ import CDeviceAI
 /// let session = try await ChatSession(modelPath: path) {
 ///     $0.systemPrompt = "You are a helpful assistant."
 /// }
-/// for try await token in session.send("What is Swift?") {
+/// for try await token in try session.send("What is Swift?") {
 ///     print(token, terminator: "")
 /// }
 /// session.close()
@@ -69,9 +69,6 @@ public final class ChatSession: @unchecked Sendable {
             let roles = messages.map { $0.role.rawValue }
             let contents = messages.map { $0.content }
 
-            var reply = ""
-            var tokenCount = 0
-
             // Build C string arrays
             let cRoles = roles.map { strdup($0) }
             let cContents = contents.map { strdup($0) }
@@ -83,35 +80,66 @@ public final class ChatSession: @unchecked Sendable {
             var cRolePtrs: [UnsafePointer<CChar>?] = cRoles.map { UnsafePointer($0) }
             var cContentPtrs: [UnsafePointer<CChar>?] = cContents.map { UnsafePointer($0) }
 
-            // Use blocking generate — streaming requires C function pointer interop
-            // which is complex in Swift 6. TODO: wire streaming via dai_llm_generate_stream
-            let cResult = cRolePtrs.withUnsafeMutableBufferPointer { rolesPtr -> UnsafeMutablePointer<CChar>? in
+            // Streaming context passed through the C void* callback
+            final class StreamCtx {
+                var reply = ""
+                var tokenCount = 0
+                var ttftMs: Int64?
+                let startMs: Int64
+                let continuation: AsyncThrowingStream<String, Error>.Continuation
+
+                init(startMs: Int64, continuation: AsyncThrowingStream<String, Error>.Continuation) {
+                    self.startMs = startMs
+                    self.continuation = continuation
+                }
+            }
+
+            let streamCtx = StreamCtx(startMs: inferenceStartMs, continuation: continuation)
+            let ctxPtr = Unmanaged.passRetained(streamCtx).toOpaque()
+
+            cRolePtrs.withUnsafeMutableBufferPointer { rolesPtr in
                 cContentPtrs.withUnsafeMutableBufferPointer { contentsPtr in
-                    dai_llm_generate(
+                    dai_llm_generate_stream(
                         rolesPtr.baseAddress, contentsPtr.baseAddress, Int32(messages.count),
-                        Int32(cfg.maxTokens), cfg.temperature, cfg.topP, Int32(cfg.topK), cfg.repeatPenalty
+                        Int32(cfg.maxTokens), cfg.temperature, cfg.topP, Int32(cfg.topK), cfg.repeatPenalty,
+                        // on_token callback
+                        { tokenCStr, ctx in
+                            guard let ctx, let tokenCStr else { return }
+                            let streamCtx = Unmanaged<StreamCtx>.fromOpaque(ctx).takeUnretainedValue()
+                            let token = String(cString: tokenCStr)
+                            streamCtx.reply += token
+                            streamCtx.tokenCount += 1
+                            if streamCtx.ttftMs == nil {
+                                streamCtx.ttftMs = Int64(Date().timeIntervalSince1970 * 1000) - streamCtx.startMs
+                            }
+                            streamCtx.continuation.yield(token)
+                        },
+                        // on_error callback
+                        { msgCStr, ctx in
+                            guard let ctx, let msgCStr else { return }
+                            let streamCtx = Unmanaged<StreamCtx>.fromOpaque(ctx).takeUnretainedValue()
+                            let msg = String(cString: msgCStr)
+                            streamCtx.continuation.finish(throwing: DeviceAIError.inferenceFailed(reason: msg))
+                        },
+                        ctxPtr
                     )
                 }
             }
 
+            // Release the retained context
+            let finalCtx = Unmanaged<StreamCtx>.fromOpaque(ctxPtr).takeRetainedValue()
             let latencyMs = currentTimeMs() - inferenceStartMs
-
-            if let cResult {
-                reply = String(cString: cResult)
-                dai_llm_free_string(cResult)
-                continuation.yield(reply)
-                tokenCount = reply.split(separator: " ").count // approximate
-            }
 
             DeviceAI.shared.recordEvent(.inferenceComplete(
                 module: "llm", modelId: modelId, latencyMs: latencyMs,
-                tokensPerSec: latencyMs > 0 ? Float(tokenCount) * 1000.0 / Float(latencyMs) : nil,
-                outputTokenCount: tokenCount, finishReason: reply.isEmpty ? "empty" : "stop"
+                ttftMs: finalCtx.ttftMs,
+                tokensPerSec: latencyMs > 0 ? Float(finalCtx.tokenCount) * 1000.0 / Float(latencyMs) : nil,
+                outputTokenCount: finalCtx.tokenCount, finishReason: finalCtx.reply.isEmpty ? "empty" : "stop"
             ))
 
             self.lock.lock()
-            if !reply.isEmpty {
-                self._history.append(LlmMessage(role: .assistant, content: reply))
+            if !finalCtx.reply.isEmpty {
+                self._history.append(LlmMessage(role: .assistant, content: finalCtx.reply))
             } else {
                 self._history.removeLast()
             }
