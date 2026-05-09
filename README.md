@@ -74,7 +74,7 @@ import DeviceAI
 DeviceAI.initialize()
 
 // With cloud backend (optional)
-DeviceAI.initialize(apiKey: "dai_live_...") {
+DeviceAI.initialize(apiKey: "<YOUR_API_KEY>") {
     $0.telemetry = .minimal
 }
 ```
@@ -86,7 +86,7 @@ That's it. The SDK runs fully on-device with no backend required.
 **Android:**
 
 ```kotlin
-DeviceAI.initialize(context = this, apiKey = "dai_live_...") {
+DeviceAI.initialize(context = this, apiKey = "<YOUR_API_KEY>") {
     telemetry = TelemetryLevel.Minimal
     appVersion = BuildConfig.VERSION_NAME
 }
@@ -95,7 +95,7 @@ DeviceAI.initialize(context = this, apiKey = "dai_live_...") {
 **iOS:**
 
 ```swift
-DeviceAI.initialize(apiKey: "dai_live_...") {
+DeviceAI.initialize(apiKey: "<YOUR_API_KEY>") {
     $0.telemetry = .minimal
     $0.appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
 }
@@ -272,7 +272,7 @@ When telemetry is enabled, the SDK automatically tracks performance metrics for 
 **Android:**
 
 ```kotlin
-DeviceAI.initialize(context = this, apiKey = "dai_live_...") {
+DeviceAI.initialize(context = this, apiKey = "<YOUR_API_KEY>") {
     telemetry = TelemetryLevel.Off      // default — nothing sent
     telemetry = TelemetryLevel.Minimal  // model load/unload + inference metrics
     telemetry = TelemetryLevel.Full     // includes OTA downloads + manifest syncs
@@ -282,7 +282,7 @@ DeviceAI.initialize(context = this, apiKey = "dai_live_...") {
 **iOS:**
 
 ```swift
-DeviceAI.initialize(apiKey: "dai_live_...") {
+DeviceAI.initialize(apiKey: "<YOUR_API_KEY>") {
     $0.telemetry = .off      // default — nothing sent
     $0.telemetry = .minimal  // model load/unload + inference metrics
     $0.telemetry = .full     // includes OTA downloads + manifest syncs
@@ -298,7 +298,7 @@ Route events to your own analytics instead of the DeviceAI backend:
 **Android:**
 
 ```kotlin
-DeviceAI.initialize(context = this, apiKey = "dai_live_...") {
+DeviceAI.initialize(context = this, apiKey = "<YOUR_API_KEY>") {
     telemetry = TelemetryLevel.Minimal
     telemetrySink = object : TelemetrySink {
         override suspend fun ingest(events: List<TelemetryEvent>) {
@@ -311,7 +311,7 @@ DeviceAI.initialize(context = this, apiKey = "dai_live_...") {
 **iOS:**
 
 ```swift
-DeviceAI.initialize(apiKey: "dai_live_...") {
+DeviceAI.initialize(apiKey: "<YOUR_API_KEY>") {
     $0.telemetry = .minimal
     $0.telemetrySink = MyAnalyticsSink()  // conforms to TelemetrySink protocol
 }
