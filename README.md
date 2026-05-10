@@ -18,9 +18,9 @@
 
 ```kotlin
 // build.gradle.kts
-implementation("dev.deviceai:core:0.3.0-alpha01")
-implementation("dev.deviceai:speech:0.3.0-alpha01")   // STT + TTS
-implementation("dev.deviceai:llm:0.3.0-alpha01")      // LLM + RAG
+implementation("dev.deviceai:core:0.0.1")
+implementation("dev.deviceai:speech:0.0.1")   // STT + TTS
+implementation("dev.deviceai:llm:0.0.1")      // LLM + RAG
 ```
 
 ### iOS / macOS (Swift Package Manager)
@@ -387,7 +387,7 @@ Browse LLM models with `LlmCatalog`. Download Whisper/TTS models via `ModelRegis
 
 | Platform | STT | TTS | LLM | Version | Status |
 |----------|-----|-----|-----|---------|--------|
-| Android (API 26+) | ✅ | ✅ | ✅ | 0.3.0-alpha01 | Available |
+| Android (API 26+) | ✅ | ✅ | ✅ | 0.0.1 | Available |
 | iOS 17+ / macOS 14+ | ✅ | ✅ | ✅ | 0.0.1 | Available |
 | Flutter | — | — | — | — | Planned |
 | React Native | — | — | — | — | Planned |
