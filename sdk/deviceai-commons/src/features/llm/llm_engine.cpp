@@ -119,12 +119,18 @@ static std::string do_generate(
 
     const llama_vocab *vocab = llama_model_get_vocab(g_model);
 
-    // Tokenize
+    // Tokenize.
+    // add_special = false: build_prompt() already applied the model's chat
+    // template, which emits the model's BOS marker (e.g. Llama 3's
+    // <|begin_of_text|>). With parse_special = true that marker is tokenized as
+    // the real BOS token, so letting llama_tokenize prepend BOS again would
+    // produce a double-BOS sequence — a known cause of degraded, confabulatory
+    // output on Llama-3-family models.
     int n_prompt_max = llama_n_ctx(g_ctx);
     std::vector<llama_token> tokens(n_prompt_max);
     int n_tokens = llama_tokenize(
         vocab, full_prompt.c_str(), (int)full_prompt.size(),
-        tokens.data(), n_prompt_max, true, true
+        tokens.data(), n_prompt_max, /*add_special=*/false, /*parse_special=*/true
     );
     if (n_tokens < 0) {
         LOGE("Tokenization failed");
