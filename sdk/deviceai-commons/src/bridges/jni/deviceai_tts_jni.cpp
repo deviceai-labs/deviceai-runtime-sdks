@@ -7,6 +7,7 @@
 
 #include "deviceai_speech_jni.h"
 #include "dai_tts.h"
+#include "dai_archive.h"
 
 #include <string>
 #include <vector>
@@ -119,6 +120,15 @@ Java_dev_deviceai_SpeechBridge_nativeSynthesizeStream(
 JNIEXPORT jint JNICALL
 Java_dev_deviceai_SpeechBridge_nativeTtsSampleRate(JNIEnv *, jobject) {
     return (jint) dai_tts_sample_rate();
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_deviceai_SpeechBridge_nativeExtractTarBz2(
+    JNIEnv *env, jobject, jstring archivePath, jstring destDir
+) {
+    std::string archive = jstring_to_string(env, archivePath);
+    std::string dest    = jstring_to_string(env, destDir);
+    return (jint) dai_extract_tar_bz2(archive.c_str(), dest.c_str());
 }
 
 JNIEXPORT void JNICALL

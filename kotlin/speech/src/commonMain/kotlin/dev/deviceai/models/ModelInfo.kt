@@ -113,6 +113,33 @@ data class TtsVoiceInfo(
 ) : ModelInfo
 
 /**
+ * A sherpa-onnx TTS voice distributed as a single .tar.bz2 from the sherpa-onnx
+ * `tts-models` release. The tarball is the artifact the engine is built and
+ * tested against: it carries the ONNX model *with* the metadata sherpa's loader
+ * reads (sample_rate, n_speakers…), `tokens.txt`, and `espeak-ng-data/`.
+ * Individual upstream files (e.g. rhasspy/piper-voices) lack all three.
+ *
+ * @param archiveUrl   The .tar.bz2 URL.
+ * @param archiveSha256 Lowercase hex SHA-256 of the archive; verified before extraction.
+ * @param topDir       Directory name at the root of the tarball (e.g. "vits-piper-en_US-lessac-medium").
+ * @param modelFile    Model filename inside [topDir].
+ * @param sampleRate   Output sample rate the voice produces, for playback configuration.
+ */
+data class TtsTarballInfo(
+    override val id: String,
+    override val displayName: String,
+    override val sizeBytes: Long,
+    val languageCode: String,
+    val modelType: TtsModelType,
+    val archiveUrl: String,
+    val archiveSha256: String,
+    val topDir: String,
+    val modelFile: String,
+    val sampleRate: Int,
+    val numSpeakers: Int = 1,
+) : ModelInfo
+
+/**
  * Distinguishes sherpa-onnx TTS model architectures.
  * - [KOKORO]: needs model.onnx + tokens.txt + voices.bin; no espeak-ng-data required.
  * - [VITS]: needs model.onnx + tokens.txt; may also need espeak-ng-data for English phonemization.
@@ -139,6 +166,18 @@ fun LocalModel.ttsVoicesPath(): String {
     // Only return a path if voices.bin was actually downloaded (Kokoro models).
     // VITS models never download voices.bin; returning a non-empty path would
     // make the native layer treat them as Kokoro and fail at init.
+    return if (PlatformStorage.fileExists(candidate)) candidate else ""
+}
+
+/**
+ * Absolute path to the espeak-ng-data directory for a downloaded VITS/Piper
+ * voice, or "" if the voice has none (Kokoro, or a voice that ships its own
+ * lexicon). Pass to [TtsConfig.dataDir]. Derived by convention, like
+ * [ttsVoicesPath]: the directory sits beside the model file.
+ */
+fun LocalModel.ttsDataDir(): String {
+    if (modelType != LocalModelType.TTS) return ""
+    val candidate = "${modelPath.substringBeforeLast('/')}/espeak-ng-data"
     return if (PlatformStorage.fileExists(candidate)) candidate else ""
 }
 

@@ -69,7 +69,8 @@ object ModelRegistry {
             listOf(
                 WhisperDownloadStrategy(http, fs, paths, store),
                 PiperDownloadStrategy(http, fs, paths, store),
-                TtsDownloadStrategy(http, fs, paths, store)
+                TtsDownloadStrategy(http, fs, paths, store),
+                TarballTtsStrategy(http, fs, paths, store),
             )
         )
         initialized = true
@@ -117,6 +118,16 @@ object ModelRegistry {
         requireInitialized()
         return if (languageCode != null) TtsCatalog.getVoices(languageCode)
                else TtsCatalog.getVoices()
+    }
+
+    /**
+     * sherpa-onnx TTS voices packaged as tarballs (model + tokens + espeak-ng-data
+     * in one verified download). Prefer these over [getTtsVoices] for VITS/Piper:
+     * they are the artifacts the engine is tested against.
+     */
+    fun getTtsTarballVoices(languageCode: String? = null): List<TtsTarballInfo> {
+        requireInitialized()
+        return TtsCatalog.getTarballVoices(languageCode)
     }
 
     // ══════════════════════════════════════════════════════════════

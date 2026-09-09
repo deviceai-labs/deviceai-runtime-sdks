@@ -87,6 +87,10 @@ JNIEXPORT jint JNICALL
 Java_dev_deviceai_SpeechBridge_nativeTtsSampleRate(
     JNIEnv *env, jobject thiz);
 
+JNIEXPORT jint JNICALL
+Java_dev_deviceai_SpeechBridge_nativeExtractTarBz2(
+    JNIEnv *env, jobject thiz, jstring archivePath, jstring destDir);
+
 JNIEXPORT void JNICALL
 Java_dev_deviceai_SpeechBridge_nativeCancelTts(
     JNIEnv *env, jobject thiz);

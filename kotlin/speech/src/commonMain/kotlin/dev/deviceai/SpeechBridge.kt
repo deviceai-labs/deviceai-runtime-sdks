@@ -109,6 +109,13 @@ expect object SpeechBridge {
     fun ttsSampleRate(): Int
 
     /**
+     * Extract a .tar.bz2 archive (sherpa-onnx model tarballs) into [destDir],
+     * streaming — memory stays flat regardless of archive size. Returns the
+     * number of files written, or -1 on failure with the reason in the log.
+     */
+    fun extractTarBz2(archivePath: String, destDir: String): Int
+
+    /**
      * Cancel ongoing synthesis.
      */
     fun cancelTts()

@@ -18,6 +18,43 @@ internal object TtsCatalog {
 
     fun getVoices(): List<TtsVoiceInfo> = voices
 
+    /** Voices distributed as sherpa-onnx tarballs — the loadable-by-construction path. */
+    fun getTarballVoices(languageCode: String? = null): List<TtsTarballInfo> =
+        if (languageCode == null) tarballVoices else tarballVoices.filter { it.languageCode == languageCode }
+
+    private const val SHERPA_TTS = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models"
+
+    // Sizes and hashes measured 2026-09-10 from the release assets.
+    // Pi 4 @ 4 threads: Piper medium voices run at RTF ~0.36 (sherpa docs) —
+    // ~3x faster than real time on edge CPUs, 61 MB. Kokoro (330 MB, RTF 2.77)
+    // is deliberately not offered here.
+    private val tarballVoices: List<TtsTarballInfo> = listOf(
+        TtsTarballInfo(
+            id            = "vits-piper-en_US-lessac-medium",
+            displayName   = "Piper Lessac (US English, medium)",
+            sizeBytes     = 67_230_653L,
+            languageCode  = "en",
+            modelType     = TtsModelType.VITS,
+            archiveUrl    = "$SHERPA_TTS/vits-piper-en_US-lessac-medium.tar.bz2",
+            archiveSha256 = "9e3febfacf0abf4270172d2958bcec246032b7e88efc2720840cc80c93de334e",
+            topDir        = "vits-piper-en_US-lessac-medium",
+            modelFile     = "en_US-lessac-medium.onnx",
+            sampleRate    = 22_050,
+        ),
+        TtsTarballInfo(
+            id            = "vits-piper-en_GB-alan-medium",
+            displayName   = "Piper Alan (British English, medium)",
+            sizeBytes     = 67_220_121L,
+            languageCode  = "en",
+            modelType     = TtsModelType.VITS,
+            archiveUrl    = "$SHERPA_TTS/vits-piper-en_GB-alan-medium.tar.bz2",
+            archiveSha256 = "a48d4017da0f77668b27bed63fe6e04dd64c6397e1fadad4f460efb0ef7c9012",
+            topDir        = "vits-piper-en_GB-alan-medium",
+            modelFile     = "en_GB-alan-medium.onnx",
+            sampleRate    = 22_050,
+        ),
+    )
+
     fun getVoices(languageCode: String): List<TtsVoiceInfo> =
         voices.filter { it.languageCode == languageCode }
 

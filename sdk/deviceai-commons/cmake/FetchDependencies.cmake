@@ -85,3 +85,32 @@ if(DAI_ENABLE_TTS)
 
     message(STATUS "[deviceai-commons] sherpa-onnx ${SHERPA_ONNX_VERSION} headers fetched")
 endif()
+
+# ═══════════════════════════════════════════════════════════════
+#                     bzip2 (tar.bz2 model archives)
+# ═══════════════════════════════════════════════════════════════
+# sherpa-onnx publishes TTS/ASR models as .tar.bz2. Upstream bzip2 has no
+# CMake, so we fetch the release tarball and compile libbz2's seven sources
+# ourselves. The Android NDK ships no libbz2; iOS has a system one but using
+# ours everywhere keeps one extractor.
+
+FetchContent_Declare(bzip2
+    URL      https://sourceware.org/pub/bzip2/bzip2-${BZIP2_VERSION}.tar.gz
+    URL_HASH SHA256=${BZIP2_SHA256}
+)
+FetchContent_GetProperties(bzip2)
+if(NOT bzip2_POPULATED)
+    FetchContent_Populate(bzip2)
+endif()
+add_library(dai_bz2 STATIC
+    ${bzip2_SOURCE_DIR}/blocksort.c
+    ${bzip2_SOURCE_DIR}/huffman.c
+    ${bzip2_SOURCE_DIR}/crctable.c
+    ${bzip2_SOURCE_DIR}/randtable.c
+    ${bzip2_SOURCE_DIR}/compress.c
+    ${bzip2_SOURCE_DIR}/decompress.c
+    ${bzip2_SOURCE_DIR}/bzlib.c
+)
+target_include_directories(dai_bz2 PUBLIC ${bzip2_SOURCE_DIR})
+target_compile_options(dai_bz2 PRIVATE -fPIC -O2 -w)
+message(STATUS "[deviceai-commons] bzip2 ${BZIP2_VERSION} fetched")
