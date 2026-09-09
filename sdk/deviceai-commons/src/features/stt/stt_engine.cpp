@@ -56,6 +56,11 @@ static bool  g_use_vad            = true;
 static bool  g_single_segment     = true;
 static bool  g_no_context         = true;
 
+// Lower bound for the derived audio_ctx. Below ~1/2 window whisper's decoder
+// loses accuracy on short clips; 768 is the value the whisper.cpp stream
+// example settled on as the quality/speed compromise.
+static const int kMinAudioCtx = 768;
+
 // ═══════════════════════════════════════════════════════════════
 //                      Internal helpers
 // ═══════════════════════════════════════════════════════════════
@@ -169,10 +174,23 @@ static bool vad_trim(std::vector<float> &audio) {
     return true;
 }
 
-static struct whisper_full_params make_params(const std::string &language, float audio_sec) {
+/**
+ * Per-call params. audio_ctx is the big lever on CPU: whisper always pads
+ * input to a 30 s window (1500 encoder frames), and the encoder's cost scales
+ * with that window, not with the audio. Sizing audio_ctx to the real length
+ * lets short utterances skip the padded frames. Each frame is 160 samples and
+ * the encoder's conv stride halves that, hence /320. Floored at kMinAudioCtx,
+ * so a 1-2 s clip runs ~half the encoder rather than ~5%: below the floor the
+ * decoder loses accuracy, and half is where the time goes anyway.
+ *
+ * This was in the original JNI (6035e8e) and dropped by the extraction
+ * refactor (5937dba), which hardcoded 0 = full window.
+ */
+static struct whisper_full_params make_params(const std::string &language, int n_samples, float audio_sec) {
     struct whisper_full_params p = g_params;
     p.language  = language.c_str();
-    p.audio_ctx = 0;
+    const int auto_ctx = (n_samples + 319) / 320;
+    p.audio_ctx = std::min(std::max(auto_ctx, kMinAudioCtx), 1500);
     p.max_tokens = std::max(32, (int)(audio_sec * 3.0f) + 32);
     return p;
 }
@@ -206,7 +224,7 @@ static std::string do_transcribe(
 
     // Inference
     std::string lang = g_language;
-    struct whisper_full_params params = make_params(lang, audio_sec);
+    struct whisper_full_params params = make_params(lang, (int)samples.size(), audio_sec);
 
     struct whisper_state *state = whisper_init_state(g_ctx);
     if (!state) {
@@ -287,6 +305,10 @@ bool dai_stt_init(
     g_params.print_timestamps = false;
     g_params.single_segment   = g_single_segment;
     g_params.no_context       = g_no_context;
+    // Drop whisper's non-speech annotation tokens — "(buzzing)", "(music)",
+    // "(speaking in foreign language)" — which it emits for noise. Defaults to
+    // false upstream; for a transcription product they are never wanted.
+    g_params.suppress_nst     = true;
 
     LOGI("STT initialized: %s (language=%s, threads=%d, gpu=%d, vad=%d)",
          model_path, g_language.c_str(), max_threads, use_gpu, use_vad);
@@ -396,7 +418,7 @@ void dai_stt_transcribe_stream(
     }
 
     std::string lang = g_language;
-    struct whisper_full_params params = make_params(lang, audio_sec);
+    struct whisper_full_params params = make_params(lang, (int)audio.size(), audio_sec);
 
     struct whisper_state *state = whisper_init_state(g_ctx);
     if (!state) {

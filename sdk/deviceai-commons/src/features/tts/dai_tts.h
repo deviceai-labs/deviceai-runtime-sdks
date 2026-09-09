@@ -65,6 +65,15 @@ void dai_tts_synthesize_stream(
     void* ctx
 );
 
+/**
+ * Output sample rate of the loaded voice in Hz (e.g. 22050 for Piper/VITS,
+ * 24000 for Kokoro). Callers MUST configure playback from this rather than
+ * assuming a rate — a mismatch plays audio pitched and sped by the ratio.
+ *
+ * @return Sample rate in Hz; 0 if no voice is loaded.
+ */
+int dai_tts_sample_rate(void);
+
 /** Cancel ongoing synthesis. Thread-safe. */
 void dai_tts_cancel(void);
 

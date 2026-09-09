@@ -17,8 +17,12 @@ if(ANDROID)
         message(STATUS "[deviceai-commons] sherpa-onnx pre-built found for ${ANDROID_ABI}")
     else()
         set(DAI_SHERPA_FOUND FALSE PARENT_SCOPE)
-        message(STATUS "[deviceai-commons] sherpa-onnx pre-built not found for ${ANDROID_ABI}")
-        message(STATUS "  Run: sdk/deviceai-commons/scripts/download-sherpa-onnx.sh android")
+        # WARNING, not STATUS: a STATUS line scrolls past unread and the build
+        # then succeeds with TTS compiled to no-op stubs. This shipped to Maven
+        # Central once (speech-android 0.0.3 has no sherpa .so at all).
+        message(WARNING "[deviceai-commons] sherpa-onnx pre-built NOT found for ${ANDROID_ABI} — "
+                        "TTS will compile to non-functional stubs.\n"
+                        "  Run: sdk/deviceai-commons/scripts/download-sherpa-onnx.sh android")
     endif()
 
 elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")

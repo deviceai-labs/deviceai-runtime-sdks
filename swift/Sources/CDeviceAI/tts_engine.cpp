@@ -241,6 +241,11 @@ void dai_tts_synthesize_stream(
     if (!g_cancel_requested && on_complete) on_complete(ctx);
 }
 
+int dai_tts_sample_rate(void) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    return g_tts ? SherpaOnnxOfflineTtsSampleRate(g_tts) : 0;
+}
+
 void dai_tts_cancel(void) {
     g_cancel_requested = true;
 }
@@ -276,6 +281,7 @@ void dai_tts_synthesize_stream(const char*, dai_tts_on_chunk_fn, dai_tts_on_comp
                                dai_tts_on_error_fn on_error, void* ctx) {
     if (on_error) on_error("TTS not available: sherpa-onnx not built", ctx);
 }
+int dai_tts_sample_rate(void) { return 0; }
 void dai_tts_cancel(void) {}
 void dai_tts_shutdown(void) {}
 void dai_tts_free_audio(int16_t*) {}

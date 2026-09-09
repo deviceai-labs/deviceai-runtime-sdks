@@ -22,6 +22,7 @@
 #include <cstdio>
 #include <fstream>
 #include <algorithm>
+#include <exception>
 
 // ═══════════════════════════════════════════════════════════════
 //                         Logging
@@ -98,6 +99,18 @@ static void float_to_int16(const float* in, int16_t* out, int n) {
     }
 }
 
+/** Generate with the same exception guard as init — see dai_tts_init. */
+static const SherpaOnnxGeneratedAudio* generate_guarded(const char* text) {
+    try {
+        return SherpaOnnxOfflineTtsGenerate(g_tts, text, g_speaker_id, 1.0f);
+    } catch (const std::exception &e) {
+        LOGE("SherpaOnnxOfflineTtsGenerate threw: %s", e.what());
+    } catch (...) {
+        LOGE("SherpaOnnxOfflineTtsGenerate threw a non-std exception");
+    }
+    return nullptr;
+}
+
 // ── Public C API ─────────────────────────────────────────────
 
 extern "C" {
@@ -143,9 +156,22 @@ bool dai_tts_init(
     config.model.provider       = "cpu";
     config.max_num_sentences    = 2;
 
-    g_tts = SherpaOnnxCreateOfflineTts(&config);
+    // sherpa-onnx's C API is a thin wrapper over C++ and does NOT catch what
+    // ONNX Runtime throws: a corrupt or truncated model surfaces as an
+    // Ort::Exception ("protobuf parsing failed") that unwinds straight through
+    // the JNI frame and aborts the process. Catch here so a bad model file is
+    // a false return the app can show, not a crash.
+    try {
+        g_tts = SherpaOnnxCreateOfflineTts(&config);
+    } catch (const std::exception &e) {
+        LOGE("SherpaOnnxCreateOfflineTts threw: %s", e.what());
+        g_tts = nullptr;
+    } catch (...) {
+        LOGE("SherpaOnnxCreateOfflineTts threw a non-std exception");
+        g_tts = nullptr;
+    }
     if (!g_tts) {
-        LOGE("SherpaOnnxCreateOfflineTts failed");
+        LOGE("SherpaOnnxCreateOfflineTts failed (model=%s)", model_path ? model_path : "null");
         return false;
     }
 
@@ -162,7 +188,7 @@ int16_t* dai_tts_synthesize(const char* text, int* out_len) {
     g_cancel_requested = false;
 
     const SherpaOnnxGeneratedAudio *audio =
-        SherpaOnnxOfflineTtsGenerate(g_tts, text, g_speaker_id, 1.0f);
+        generate_guarded(text);
 
     if (!audio || audio->n == 0) {
         if (audio) SherpaOnnxDestroyOfflineTtsGeneratedAudio(audio);
@@ -185,7 +211,7 @@ bool dai_tts_synthesize_to_file(const char* text, const char* output_path) {
     g_cancel_requested = false;
 
     const SherpaOnnxGeneratedAudio *audio =
-        SherpaOnnxOfflineTtsGenerate(g_tts, text, g_speaker_id, 1.0f);
+        generate_guarded(text);
 
     if (!audio || audio->n == 0) {
         if (audio) SherpaOnnxDestroyOfflineTtsGeneratedAudio(audio);
@@ -215,7 +241,7 @@ void dai_tts_synthesize_stream(
         } else {
             g_cancel_requested = false;
             const SherpaOnnxGeneratedAudio *audio =
-                SherpaOnnxOfflineTtsGenerate(g_tts, text, g_speaker_id, 1.0f);
+                generate_guarded(text);
 
             if (audio && audio->n > 0 && !g_cancel_requested) {
                 shorts.resize(audio->n);
@@ -239,6 +265,11 @@ void dai_tts_synthesize_stream(
     }
 
     if (!g_cancel_requested && on_complete) on_complete(ctx);
+}
+
+int dai_tts_sample_rate(void) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    return g_tts ? SherpaOnnxOfflineTtsSampleRate(g_tts) : 0;
 }
 
 void dai_tts_cancel(void) {
@@ -276,6 +307,7 @@ void dai_tts_synthesize_stream(const char*, dai_tts_on_chunk_fn, dai_tts_on_comp
                                dai_tts_on_error_fn on_error, void* ctx) {
     if (on_error) on_error("TTS not available: sherpa-onnx not built", ctx);
 }
+int dai_tts_sample_rate(void) { return 0; }
 void dai_tts_cancel(void) {}
 void dai_tts_shutdown(void) {}
 void dai_tts_free_audio(int16_t*) {}
