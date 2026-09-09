@@ -34,6 +34,8 @@ if(DAI_ENABLE_STT OR DAI_ENABLE_TTS)
     if(DAI_ENABLE_TTS AND TARGET dai_tts)
         target_link_libraries(speech_jni dai_tts)
     endif()
+    # Model tarball extraction (sherpa-onnx voices ship as .tar.bz2)
+    target_link_libraries(speech_jni dai_archive)
 
     # Direct engine headers still needed for JNI-specific streaming code
     if(DAI_WHISPER_FOUND AND TARGET whisper)

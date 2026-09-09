@@ -24,7 +24,8 @@ internal class HttpFileDownloader(
     suspend fun download(
         url: String,
         destPath: String,
-        onProgress: (DownloadProgress) -> Unit = {}
+        onProgress: (DownloadProgress) -> Unit = {},
+        expectedSha256: String? = null,
     ) {
         val destDir = destPath.substringBeforeLast('/')
         fs.ensureDirectoryExists(destDir)
@@ -41,7 +42,13 @@ internal class HttpFileDownloader(
                 header(HttpHeaders.Range, "bytes=$existingBytes-")
             }
         }.execute { httpResponse ->
-            val isResuming = httpResponse.status.value == 206 && existingBytes > 0
+            // A 404 body is fifteen bytes of "Entry not found"; without this it
+            // was written to disk and handed to the engine as a model.
+            val status = httpResponse.status.value
+            if (status !in 200..299) {
+                throw HttpDownloadException(url, status)
+            }
+            val isResuming = status == 206 && existingBytes > 0
             val contentLength = httpResponse.contentLength() ?: 0L
             val totalBytes = if (isResuming) contentLength + existingBytes else contentLength
             expectedTotal = totalBytes
@@ -90,6 +97,15 @@ internal class HttpFileDownloader(
             throw IncompleteDownloadException(url, expected, actual)
         }
 
+        if (expectedSha256 != null) {
+            val actualHash = sha256File(tempPath)
+            if (actualHash == null || !actualHash.equals(expectedSha256, ignoreCase = true)) {
+                // Wrong bytes, not short bytes: a resume would not help. Drop it.
+                fs.deleteFile(tempPath)
+                throw ChecksumMismatchException(url, expectedSha256, actualHash)
+            }
+        }
+
         fs.deleteFile(destPath)
         if (!fs.moveFile(tempPath, destPath)) {
             throw RuntimeException("Failed to move downloaded file to $destPath")
@@ -110,3 +126,11 @@ class IncompleteDownloadException(
 ) : RuntimeException(
     "Download of $url stopped at $actualBytes of $expectedBytes bytes (${expectedBytes - actualBytes} short)"
 )
+
+/** The server answered with a non-2xx status; nothing was written. */
+class HttpDownloadException(val url: String, val status: Int) :
+    RuntimeException("Download of $url failed: HTTP $status")
+
+/** The file arrived complete but its SHA-256 does not match the catalog. Deleted. */
+class ChecksumMismatchException(val url: String, val expected: String, val actual: String?) :
+    RuntimeException("Checksum mismatch for $url: expected $expected, got ${actual ?: "unreadable"}")

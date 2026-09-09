@@ -16,7 +16,7 @@ option(DAI_ENABLE_CORE   "Enable core infrastructure (session, telemetry)" OFF)
 # ── Load pinned dependency versions from VERSIONS file ───────
 file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSIONS" _version_lines)
 foreach(_line ${_version_lines})
-    if(_line MATCHES "^([A-Z_]+)=(.+)$")
+    if(_line MATCHES "^([A-Z0-9_]+)=(.+)$")
         set(${CMAKE_MATCH_1} "${CMAKE_MATCH_2}" CACHE STRING "" FORCE)
     endif()
 endforeach()
@@ -34,6 +34,9 @@ endif()
 if(DAI_ENABLE_LLM)
     add_subdirectory(src/backends/llamacpp)
 endif()
+
+# ── Shared utilities ─────────────────────────────────────────
+add_subdirectory(src/utils)
 
 # ── Feature engines (shared inference logic) ─────────────────
 if(DAI_ENABLE_STT)

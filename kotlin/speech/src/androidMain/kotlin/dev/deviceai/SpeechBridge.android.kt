@@ -162,6 +162,9 @@ actual object SpeechBridge {
 
     actual fun ttsSampleRate(): Int = nativeTtsSampleRate()
 
+    actual fun extractTarBz2(archivePath: String, destDir: String): Int =
+        nativeExtractTarBz2(archivePath, destDir)
+
     actual fun cancelTts() = nativeCancelTts()
 
     actual fun shutdownTts() {
@@ -219,6 +222,7 @@ actual object SpeechBridge {
     private external fun nativeSynthesizeToFile(text: String, outputPath: String): Boolean
     private external fun nativeSynthesizeStream(text: String, callback: TtsStream)
     private external fun nativeTtsSampleRate(): Int
+    private external fun nativeExtractTarBz2(archivePath: String, destDir: String): Int
     private external fun nativeCancelTts()
     private external fun nativeShutdownTts()
 }
