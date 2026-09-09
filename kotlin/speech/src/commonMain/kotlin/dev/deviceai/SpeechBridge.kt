@@ -102,6 +102,13 @@ expect object SpeechBridge {
     fun synthesizeStream(text: String, callback: TtsStream)
 
     /**
+     * Output sample rate of the loaded TTS voice in Hz — 22050 for Piper/VITS,
+     * 24000 for Kokoro. Configure AudioTrack from this; assuming a rate plays
+     * the audio pitched and sped by the ratio. Returns 0 if no voice is loaded.
+     */
+    fun ttsSampleRate(): Int
+
+    /**
      * Cancel ongoing synthesis.
      */
     fun cancelTts()

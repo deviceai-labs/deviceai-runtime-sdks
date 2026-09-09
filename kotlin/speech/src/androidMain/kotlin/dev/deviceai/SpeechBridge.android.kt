@@ -130,7 +130,8 @@ actual object SpeechBridge {
     actual fun synthesize(text: String): ShortArray {
         val startMs = currentTimeMillis()
         val result = nativeSynthesize(text)
-        val audioDurationMs = (result.size / 22050f * 1000f).toInt() // ~22050 Hz mono
+        val sr = nativeTtsSampleRate().takeIf { it > 0 } ?: 22050
+        val audioDurationMs = (result.size.toLong() * 1000L / sr).toInt()
         DeviceAI.recordEvent(TelemetryEvent.InferenceComplete(
             timestampMs    = currentTimeMillis(),
             module         = "tts",
@@ -158,6 +159,8 @@ actual object SpeechBridge {
 
     actual fun synthesizeStream(text: String, callback: TtsStream) =
         nativeSynthesizeStream(text, callback)
+
+    actual fun ttsSampleRate(): Int = nativeTtsSampleRate()
 
     actual fun cancelTts() = nativeCancelTts()
 
@@ -215,6 +218,7 @@ actual object SpeechBridge {
     private external fun nativeSynthesize(text: String): ShortArray
     private external fun nativeSynthesizeToFile(text: String, outputPath: String): Boolean
     private external fun nativeSynthesizeStream(text: String, callback: TtsStream)
+    private external fun nativeTtsSampleRate(): Int
     private external fun nativeCancelTts()
     private external fun nativeShutdownTts()
 }

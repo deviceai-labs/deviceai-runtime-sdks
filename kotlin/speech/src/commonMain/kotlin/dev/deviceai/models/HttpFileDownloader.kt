@@ -34,6 +34,8 @@ internal class HttpFileDownloader(
 
         onProgress(DownloadProgress.pending())
 
+        var expectedTotal = 0L
+
         client.prepareGet(url) {
             if (existingBytes > 0) {
                 header(HttpHeaders.Range, "bytes=$existingBytes-")
@@ -42,6 +44,7 @@ internal class HttpFileDownloader(
             val isResuming = httpResponse.status.value == 206 && existingBytes > 0
             val contentLength = httpResponse.contentLength() ?: 0L
             val totalBytes = if (isResuming) contentLength + existingBytes else contentLength
+            expectedTotal = totalBytes
 
             val channel: ByteReadChannel = httpResponse.bodyAsChannel()
             val buffer = ByteArray(config.downloadBufferSize)
@@ -75,6 +78,18 @@ internal class HttpFileDownloader(
             }
         }
 
+        // The read loop ends on a closed channel OR a short read, and a dropped
+        // connection looks exactly like completion from here. Without this check
+        // a truncated .tmp was promoted to the real file — observed as a 24 MB
+        // Piper voice (should be 63 MB) that ONNX Runtime then aborted on with
+        // "protobuf parsing failed". Keep the .tmp so the Range resume on the
+        // next attempt picks up where this one stopped.
+        val expected = expectedTotal
+        val actual = fs.fileSize(tempPath)
+        if (expected > 0 && actual != expected) {
+            throw IncompleteDownloadException(url, expected, actual)
+        }
+
         fs.deleteFile(destPath)
         if (!fs.moveFile(tempPath, destPath)) {
             throw RuntimeException("Failed to move downloaded file to $destPath")
@@ -83,3 +98,15 @@ internal class HttpFileDownloader(
         onProgress(DownloadProgress.completed(fs.fileSize(destPath)))
     }
 }
+
+/**
+ * The server closed the connection before sending every byte it promised.
+ * The partial `.tmp` is left on disk so the next call resumes via Range.
+ */
+class IncompleteDownloadException(
+    val url: String,
+    val expectedBytes: Long,
+    val actualBytes: Long,
+) : RuntimeException(
+    "Download of $url stopped at $actualBytes of $expectedBytes bytes (${expectedBytes - actualBytes} short)"
+)

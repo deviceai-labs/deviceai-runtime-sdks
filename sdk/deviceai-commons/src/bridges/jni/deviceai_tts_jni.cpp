@@ -116,6 +116,11 @@ Java_dev_deviceai_SpeechBridge_nativeSynthesizeStream(
     );
 }
 
+JNIEXPORT jint JNICALL
+Java_dev_deviceai_SpeechBridge_nativeTtsSampleRate(JNIEnv *, jobject) {
+    return (jint) dai_tts_sample_rate();
+}
+
 JNIEXPORT void JNICALL
 Java_dev_deviceai_SpeechBridge_nativeCancelTts(JNIEnv *, jobject) {
     dai_tts_cancel();

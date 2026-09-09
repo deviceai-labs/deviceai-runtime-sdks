@@ -28,6 +28,17 @@ jobs:
         run: |
           yes | sdkmanager --install "ndk;26.3.11579264" "cmake;3.22.1"
 
+      - name: Fetch sherpa-onnx prebuilt (TTS backend)
+        # tts_engine.cpp compiles to no-op stubs when this library is absent,
+        # and the build still succeeds — so a missing fetch ships a silent,
+        # non-functional TTS. Fetch it, then refuse to continue without it.
+        run: |
+          bash sdk/deviceai-commons/scripts/download-sherpa-onnx.sh android
+          for abi in arm64-v8a x86_64; do
+            test -f "sdk/deviceai-commons/prebuilt/sherpa-onnx/$abi/libsherpa-onnx-c-api.so" \
+              || { echo "::error::sherpa-onnx missing for $abi"; exit 1; }
+          done
+
       - name: Cache Gradle
         uses: actions/cache@v4
         with:
