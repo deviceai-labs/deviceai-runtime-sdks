@@ -10,8 +10,9 @@ import dev.deviceai.SpeechBridge
  *   {models}/tts/{id}/{topDir}/tokens.txt         → [LocalModel.configPath]
  *   {models}/tts/{id}/{topDir}/espeak-ng-data/    → [LocalModel.ttsDataDir]
  *
- * The archive is deleted after a successful extraction; a failed extraction
- * removes the partial tree so the next attempt starts clean.
+ * The archive is deleted after a successful extraction. A failed extraction
+ * deletes both the archive and the partially extracted `{topDir}` so the next
+ * attempt re-downloads and starts clean.
  */
 internal class TarballTtsStrategy(
     private val http: HttpFileDownloader,
@@ -33,19 +34,22 @@ internal class TarballTtsStrategy(
 
         http.download(model.archiveUrl, archivePath, onProgress, expectedSha256 = model.archiveSha256)
 
-        val extracted = SpeechBridge.extractTarBz2(archivePath, voiceDir)
-        if (extracted <= 0) {
-            fs.deleteFile(archivePath)
-            throw ArchiveExtractException(model.id, extracted)
-        }
-        fs.deleteFile(archivePath)
-
         val root       = "$voiceDir/${model.topDir}"
         val modelPath  = "$root/${model.modelFile}"
         val tokensPath = "$root/tokens.txt"
-        if (!fs.fileExists(modelPath) || !fs.fileExists(tokensPath)) {
-            throw ArchiveExtractException(model.id, extracted, "expected $modelPath and $tokensPath after extraction")
+
+        val extracted = SpeechBridge.extractTarBz2(archivePath, voiceDir)
+        if (extracted <= 0 || !fs.fileExists(modelPath) || !fs.fileExists(tokensPath)) {
+            // Start the next attempt clean: drop the archive and whatever was
+            // written before the failure (deleteFile recurses on directories).
+            fs.deleteFile(archivePath)
+            fs.deleteFile(root)
+            throw ArchiveExtractException(
+                model.id, extracted,
+                if (extracted > 0) "expected $modelPath and $tokensPath after extraction" else null,
+            )
         }
+        fs.deleteFile(archivePath)
 
         val localModel = LocalModel(
             modelId      = model.id,

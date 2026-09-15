@@ -173,7 +173,11 @@ static int extract_tar_file(const char *tar_path, const char *dest_dir) {
 
         switch (h->typeflag) {
             case '5':
-                mkdirs(fullpath);
+                if (mkdirs(fullpath) != 0) { LOGE("mkdir %s: %s", fullpath, strerror(errno)); fclose(f); return -1; }
+                /* POSIX allows a non-zero size on a directory entry (old and
+                 * GNU-incremental tars write one); skip it or every following
+                 * header is misread. */
+                if (size > 0 && skip_padded(f, size) != 0) { fclose(f); return -1; }
                 break;
             case '0':
             case '\0': {
