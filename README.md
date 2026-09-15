@@ -18,9 +18,9 @@
 
 ```kotlin
 // build.gradle.kts
-implementation("dev.deviceai:core:0.0.3")
-implementation("dev.deviceai:speech:0.0.3")   // STT + TTS
-implementation("dev.deviceai:llm:0.0.3")      // LLM + RAG
+implementation("dev.deviceai:core:0.0.4")
+implementation("dev.deviceai:speech:0.0.4")   // STT + TTS
+implementation("dev.deviceai:llm:0.0.4")      // LLM + RAG
 ```
 
 ### iOS / macOS (Swift Package Manager)
@@ -139,16 +139,38 @@ Powered by [whisper.cpp](https://github.com/ggerganov/whisper.cpp). Runs 7× fas
 
 ## Text-to-Speech
 
+Voices are [Piper](https://github.com/rhasspy/piper) models run by
+[sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx). Get them from the SDK
+catalog — it downloads sherpa's packaged tarball (model + `tokens.txt` +
+`espeak-ng-data`), verifies its SHA-256, and extracts it. Loose `.onnx` files
+from elsewhere are missing the metadata the engine needs and will not load.
+
 ### Android
 
 ```kotlin
-SpeechBridge.initTts(modelPath, tokensPath, TtsConfig(speechRate = 1.0f))
+ModelRegistry.initialize()
+val voice = ModelRegistry.getTtsTarballVoices(languageCode = "en").first()   // ~67 MB, once
+val local = ModelRegistry.download(voice) { progress -> /* … */ }.getOrThrow()
+
+val ok = SpeechBridge.initTts(
+    modelPath  = local.modelPath,
+    tokensPath = local.configPath!!,
+    config     = TtsConfig(
+        speechRate = 1.0f,
+        dataDir    = local.ttsDataDir(),      // espeak-ng-data, required for Piper
+        voicesPath = local.ttsVoicesPath(),   // "" for Piper; voices.bin for Kokoro
+    ),
+)
+check(ok) { "TTS engine failed to initialise" }
 
 val pcm: ShortArray = SpeechBridge.synthesize("Hello from DeviceAI.")
-// Play with AudioTrack
+val sampleRate = SpeechBridge.ttsSampleRate()   // 22050 for Piper — configure AudioTrack with this
 
 SpeechBridge.shutdownTts()
 ```
+
+Piper medium voices synthesize at roughly 3× real time on a mid-range phone
+CPU (RTF ~0.36 on a Raspberry Pi 4).
 
 ### iOS
 
@@ -387,7 +409,7 @@ Browse LLM models with `LlmCatalog`. Download Whisper/TTS models via `ModelRegis
 
 | Platform | STT | TTS | LLM | Version | Status |
 |----------|-----|-----|-----|---------|--------|
-| Android (API 26+) | ✅ | ✅ | ✅ | 0.0.3 | Available |
+| Android (API 26+) | ✅ | ✅ | ✅ | 0.0.4 | Available |
 | iOS 17+ / macOS 14+ | ✅ | ✅ | ✅ | 0.0.1 | Available |
 | Flutter | — | — | — | — | Planned |
 | React Native | — | — | — | — | Planned |
